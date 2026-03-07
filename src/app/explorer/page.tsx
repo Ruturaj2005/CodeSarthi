@@ -326,6 +326,13 @@ export default function ExplorerPage() {
               <SarthiChat
                 language={language}
                 onLanguageChange={setLanguage}
+                projectId={repo.projectId}
+                // onHighlightNode={(label) => {
+                //   const found = repo.nodes.find(
+                //     (n) => n.label.toLowerCase() === label.toLowerCase() || n.id.toLowerCase() === label.toLowerCase()
+                //   );
+                //   if (found) handleNodeExplore(found);
+                // }}
               />
             )}
             {rightPanel === "score" && (

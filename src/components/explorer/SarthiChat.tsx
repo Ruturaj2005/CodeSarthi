@@ -1,19 +1,27 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Send, Bot, User, Loader2, Globe2, ChevronDown } from "lucide-react";
-import { CHAT_MESSAGES_EN, CHAT_MESSAGES_HI } from "@/lib/mockData";
+import { motion } from "framer-motion";
+import { Send, Loader2, Globe2, ChevronDown } from "lucide-react";
 import { LANGUAGE_LABELS } from "@/lib/types";
 import type { Language } from "@/lib/types";
+
+const N8N_WEBHOOK = "https://synthomind.cloud/webhook/codesarthi-chatbot";
+
+function generateSessionId() {
+  return "sess_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
 
 interface Message {
   role: "user" | "assistant";
   content: string;
+  node?: string | null;
 }
 
 interface SarthiChatProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
+  projectId?: string;
+  onHighlightNode?: (nodeLabel: string) => void;
 }
 
 const SUGGESTIONS_EN = [
@@ -38,12 +46,13 @@ function renderMarkdown(text: string) {
     .replace(/\n/g, "<br/>");
 }
 
-export default function SarthiChat({ language, onLanguageChange }: SarthiChatProps) {
+export default function SarthiChat({ language, onLanguageChange, projectId, onHighlightNode }: SarthiChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const sessionIdRef = useRef<string>(generateSessionId());
 
   const langs = Object.keys(LANGUAGE_LABELS) as Language[];
   const suggestions = language === "hi" ? SUGGESTIONS_HI : SUGGESTIONS_EN;
@@ -62,15 +71,52 @@ export default function SarthiChat({ language, onLanguageChange }: SarthiChatPro
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
-    // Simulate AI response with mock data
-    await new Promise((r) => setTimeout(r, 1200));
+    try {
+      const res = await fetch(N8N_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          msg,
+          projectId: projectId ?? "",
+          sessionId: sessionIdRef.current,
+        }),
+      });
 
-    const isHindi = language === "hi" || msg.toLowerCase().includes("kaise") || msg.toLowerCase().includes("kya");
-    const mockMessages = isHindi ? CHAT_MESSAGES_HI : CHAT_MESSAGES_EN;
-    const response = mockMessages[1]?.content ?? "I found the relevant files in the repository. Let me explain...";
+      if (!res.ok) throw new Error(`Webhook error: ${res.status}`);
 
-    setMessages((prev) => [...prev, { role: "assistant", content: response }]);
-    setLoading(false);
+      const raw = await res.json();
+      // n8n can return either an object or a single-element array
+      const data = Array.isArray(raw) ? raw[0] : raw;
+      const response: string =
+        typeof data?.output === "string" && data.output.trim()
+          ? data.output
+          : "Sorry, I could not get a response. Please try again.";
+
+      const nodeLabel: string | null =
+        typeof data?.node === "string" && data.node.trim() ? data.node.trim() : null;
+
+      setMessages((prev) => [...prev, { role: "assistant", content: response, node: nodeLabel }]);
+
+      // Save exchange to DB (fire-and-forget, don't block UI)
+      fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: sessionIdRef.current,
+          projectId: projectId ?? null,
+          userMessage: msg,
+          assistantMessage: response,
+          node: nodeLabel,
+        }),
+      }).catch(() => { /* silently ignore save errors */ });
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Something went wrong. Please check your connection and try again." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -198,18 +244,35 @@ export default function SarthiChat({ language, onLanguageChange }: SarthiChatPro
             </div>
 
             {/* Bubble */}
-            <div
-              className="max-w-[85%] px-3 py-2.5 rounded-xl text-xs leading-relaxed"
-              style={
-                msg.role === "user"
-                  ? { background: "rgba(110,86,207,0.2)", border: "1px solid rgba(110,86,207,0.3)", color: "#E8E8F0" }
-                  : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "#C0C0D0" }
-              }
-            >
-              {msg.role === "assistant" ? (
-                <p dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-              ) : (
-                msg.content
+            <div className="max-w-[85%] flex flex-col gap-1.5">
+              <div
+                className="px-3 py-2.5 rounded-xl text-xs leading-relaxed"
+                style={
+                  msg.role === "user"
+                    ? { background: "rgba(110,86,207,0.2)", border: "1px solid rgba(110,86,207,0.3)", color: "#E8E8F0" }
+                    : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "#C0C0D0" }
+                }
+              >
+                {msg.role === "assistant" ? (
+                  <p dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                ) : (
+                  msg.content
+                )}
+              </div>
+              {/* Node highlight chip */}
+              {msg.role === "assistant" && msg.node && (
+                <button
+                  onClick={() => onHighlightNode?.(msg.node!)}
+                  className="self-start flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    background: "rgba(0,210,160,0.1)",
+                    border: "1px solid rgba(0,210,160,0.35)",
+                    color: "#00D2A0",
+                  }}
+                >
+                  <span>⬡</span>
+                  <span>Explore: {msg.node}</span>
+                </button>
               )}
             </div>
           </motion.div>

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
+import { getDb } from "@/lib/db";
 import type {
   Repository,
   GraphNode,
@@ -704,7 +706,106 @@ export async function GET(req: NextRequest) {
       learningPath,
     };
 
-    return NextResponse.json(repository);
+    // 7. Generate projectId, persist to MongoDB, trigger n8n embedding webhook
+    const projectId = randomUUID();
+
+    // Save project to MongoDB (non-blocking — don't fail the request if this errors)
+    (async () => {
+      try {
+        const db = await getDb();
+        await db.collection("projects").insertOne({
+          _id: projectId as unknown as import("mongodb").ObjectId,
+          projectId,
+          repoUrl,
+          owner,
+          repoName: repo,
+          name: repository.name,
+          description: repository.description,
+          language: repository.language,
+          framework: repository.framework,
+          projectType: repository.projectType,
+          complexity: repository.complexity,
+          stats: repository.stats,
+          nodes: repository.nodes,
+          edges: repository.edges,
+          flows: repository.flows,
+          learningPath: repository.learningPath,
+          createdAt: new Date(),
+        });
+        console.log(`[analyze] Saved project ${projectId} to MongoDB`);
+      } catch (dbErr) {
+        console.error("[analyze] MongoDB save error:", dbErr);
+      }
+    })();
+
+    // Trigger n8n embedding webhook — awaited so we wait for success response
+    // Build per-file metadata payload for all selected files
+    try {
+      const webhookUrl = process.env.N8N_WEBHOOK_URL ?? "https://synthomind.cloud/webhook/codesarthi-embeddings";
+      const today = new Date().toISOString().split("T")[0];
+
+      // Build function signatures from content (name + params)
+      function extractFnSignatures(content: string, filePath: string): { name: string; signature: string }[] {
+        const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+        const sigs: { name: string; signature: string }[] = [];
+        const seen = new Set<string>();
+
+        const addSig = (name: string, params: string) => {
+          if (seen.has(name)) return;
+          seen.add(name);
+          sigs.push({ name, signature: `${name}(${params.trim()})` });
+        };
+
+        if (ext === "py") {
+          for (const m of content.matchAll(/^\s*(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)/gm))
+            if (!m[1].startsWith("__") || m[1] === "__init__") addSig(m[1], m[2]);
+        } else {
+          for (const m of content.matchAll(/(?:^|[^.])(?:async\s+)?function\s+([A-Za-z]\w*)\s*\(([^)]*)\)/gm))
+            addSig(m[1], m[2]);
+          for (const m of content.matchAll(/(?:const|let|var)\s+([A-Za-z]\w*)\s*=\s*(?:async\s+)?\(([^)]*)\)/g))
+            addSig(m[1], m[2]);
+          for (const m of content.matchAll(/([A-Za-z]\w*)\s*:\s*(?:async\s+)?function\s*\(([^)]*)\)/g))
+            addSig(m[1], m[2]);
+        }
+        return sigs.slice(0, 8);
+      }
+
+      const filesPayload = selected.map((file) => {
+        const content = contentMap[file.path] ?? "";
+        const fns = extractFnSignatures(content, file.path).map((fn) => ({
+          ...fn,
+          file: file.path,
+        }));
+        const imports = parseImports(content, file.path).slice(0, 10);
+        const loc = content ? content.split("\n").length : 0;
+
+        return {
+          projectId,
+          file: file.path,
+          type: file.type,
+          functions: fns,
+          imports,
+          linesOfCode: loc,
+          createdAt: today,
+        };
+      });
+
+      const webhookRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repo: repoUrl,
+          projectId,
+          files: filesPayload,
+        }),
+      });
+      const webhookBody = await webhookRes.text();
+      console.log(`[analyze] n8n webhook response ${webhookRes.status}:`, webhookBody);
+    } catch (webhookErr) {
+      console.error("[analyze] n8n webhook error:", webhookErr);
+    }
+
+    return NextResponse.json({ ...repository, projectId });
   } catch (err) {
     console.error("[analyze]", err);
     return NextResponse.json(
