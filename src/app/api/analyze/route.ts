@@ -143,6 +143,9 @@ function categorize(path: string): { type: NodeType; priority: number } | null {
   if (lower.includes("/components/") && depth <= 4)
     return { type: "component", priority: 3 };
 
+  // Styles (CSS/SCSS/SASS/LESS)
+  if (name.match(/\.(css|scss|sass|less)$/)) return { type: "style", priority: 3 };
+
   // Generic shallow source files
   if (depth <= 3 && name.match(/\.(py|ts|js|go|rb|java|rs|kt)$/))
     return { type: "utility", priority: 2 };
@@ -211,6 +214,7 @@ function layoutNodes(
     config: 0,
     page: 1,
     component: 1,
+    style: 1,
     controller: 2,
     service: 2,
     utility: 3,
@@ -238,19 +242,85 @@ function layoutNodes(
 // ────────────────────────────────────────────────────────────
 // Content parsing
 // ────────────────────────────────────────────────────────────
-function parseImports(content: string, path: string): string[] {
+
+/** Per-statement import extraction: returns module basename + named symbols */
+function parseImportStatements(
+  content: string,
+  path: string
+): Array<{ moduleName: string; namedImports: string[] }> {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  const out: string[] = [];
+  const out: Array<{ moduleName: string; namedImports: string[] }> = [];
+
   if (ext === "py") {
-    for (const m of content.matchAll(
-      /^(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))/gm
-    ))
-      out.push((m[1] || m[2]).split(".")[0]);
+    for (const m of content.matchAll(/^from\s+([\w.]+)\s+import\s+([^\n]+)/gm)) {
+      const moduleName = m[1].split(".")[0];
+      const names = m[2]
+        .split(",")
+        .map((s) => s.trim().split(" as ")[0].trim())
+        .filter(Boolean);
+      out.push({ moduleName, namedImports: names });
+    }
+    for (const m of content.matchAll(/^import\s+([\w.]+)/gm))
+      out.push({ moduleName: m[1].split(".")[0], namedImports: [] });
   } else {
-    for (const m of content.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) out.push(m[1]);
-    for (const m of content.matchAll(/require\(['"](\.[^'"]+)['"]\)/g)) out.push(m[1]);
+    // ES6 named: import { foo, bar } from './path'
+    for (const m of content.matchAll(
+      /import\s*\{([^}]+)\}\s*from\s*['"](\.[^'"]+)['"]/ .source
+        // use global flag via matchAll of RegExp
+        ? new RegExp(/import\s*\{([^}]+)\}\s*from\s*['"](\.[^'"]+)['"]/.source, "g")
+        : /import\s*\{([^}]+)\}\s*from\s*['"](\.[^'"]+)['"]/ 
+    )) {
+      const moduleName = m[2].split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
+      const names = m[1]
+        .split(",")
+        .map((s) => s.trim().split(" as ")[0].trim())
+        .filter((n) => n && n !== "*");
+      out.push({ moduleName, namedImports: names });
+    }
+    // ES6 default: import Foo from './path'
+    for (const m of content.matchAll(
+      new RegExp(/import\s+([A-Za-z]\w*)\s+from\s*['"](\.[^'"]+)['"]/.source, "g")
+    )) {
+      const moduleName = m[2].split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
+      out.push({ moduleName, namedImports: [m[1]] });
+    }
+    // require destructured: const { foo } = require('./path')
+    for (const m of content.matchAll(
+      new RegExp(
+        /(?:const|let|var)\s*\{([^}]+)\}\s*=\s*require\(['"](\.[^'"]+)['"]\)/.source,
+        "g"
+      )
+    )) {
+      const moduleName = m[2].split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
+      const names = m[1]
+        .split(",")
+        .map((s) => s.trim().split(":")[0].trim())
+        .filter(Boolean);
+      out.push({ moduleName, namedImports: names });
+    }
   }
   return out;
+}
+
+/** Scan source content for the function that calls a given callee name */
+function findCallerFn(content: string, calleeName: string): string | undefined {
+  const base = calleeName.replace("()", "");
+  const callRe = new RegExp(`\\b${base}\\s*\\(`);
+  let currentFn: string | undefined;
+  for (const line of content.split("\n")) {
+    const fm =
+      line.match(/(?:async\s+)?function\s+([A-Za-z]\w*)\s*\(/) ??
+      line.match(/(?:const|let|var)\s+([A-Za-z]\w*)\s*=\s*(?:async\s+)?\(/) ??
+      line.match(/^\s*(?:async\s+)?def\s+(\w+)\s*\(/);
+    if (fm) currentFn = fm[1] + "()";
+    if (currentFn && callRe.test(line)) return currentFn;
+  }
+  return undefined;
+}
+
+/** Legacy: module names only (used for node.dependencies display) */
+function parseImports(content: string, path: string): string[] {
+  return parseImportStatements(content, path).map((s) => s.moduleName);
 }
 
 function parseFunctions(content: string, path: string): string[] {
@@ -282,11 +352,11 @@ function buildEdges(
   const edges: GraphEdge[] = [];
   const seen = new Set<string>();
 
-  function add(src: string, tgt: string, label: string) {
+  function add(src: string, tgt: string, label: string, fromFn?: string, toFn?: string) {
     const k = `${src}→${tgt}`;
     if (seen.has(k) || src === tgt) return;
     seen.add(k);
-    edges.push({ id: `e${edges.length + 1}`, source: src, target: tgt, label });
+    edges.push({ id: `e${edges.length + 1}`, source: src, target: tgt, label, functionLink: fromFn && toFn ? { fromFn, toFn } : undefined });
   }
 
   const byType: Partial<Record<NodeType, GraphNode[]>> = {};
@@ -308,20 +378,53 @@ function buildEdges(
     for (const m of (byType.model ?? []).slice(0, 2)) add(s.id, m.id, "reads/writes");
   }
 
-  // Import-based edges
+  // CSS/style → component edges: link ComponentName.css → ComponentName.tsx/jsx
+  for (const styleNode of byType.style ?? []) {
+    const cssBase = styleNode.file
+      .split("/").pop()
+      ?.replace(/\.module\.(css|scss|sass|less)$/, "")
+      ?.replace(/\.(css|scss|sass|less)$/, "") ?? "";
+    const sourceNode = nodes.find((n) => {
+      const base = n.file.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
+      return base.toLowerCase() === cssBase.toLowerCase() && n.id !== styleNode.id;
+    });
+    if (sourceNode) add(sourceNode.id, styleNode.id, "styles");
+  }
+
+  // Import-based edges with accurate function-level linking
   for (const node of nodes) {
-    const imports = parseImports(contentMap[node.file] ?? "", node.file);
-    for (const imp of imports) {
-      const impName = imp.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
+    if (node.type === "style") continue; // CSS files have no imports
+    const content = contentMap[node.file] ?? "";
+    const stmts = parseImportStatements(content, node.file);
+    for (const stmt of stmts) {
       const target = nodes.find((n) => {
         const tName = n.file.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
-        return tName === impName && n.id !== node.id;
+        return tName.toLowerCase() === stmt.moduleName.toLowerCase() && n.id !== node.id;
       });
-      if (target) add(node.id, target.id, "imports");
+      if (!target) continue;
+
+      // Match named imports to actual exported functions in the target
+      const tgtFnSet = new Set(target.functions.map((f) => f.replace("()", "")));
+      const matched = stmt.namedImports.filter((n) => tgtFnSet.has(n));
+
+      if (matched.length > 0) {
+        // Exact: named import exists as a function in target
+        const toFn = matched[0] + "()";
+        const fromFn = findCallerFn(content, toFn) ?? node.functions[0];
+        add(node.id, target.id, "imports", fromFn, toFn);
+      } else if (stmt.namedImports.length > 0) {
+        // Named imports present but not detected as functions (types/constants)
+        const toFn = stmt.namedImports[0] + "()";
+        const fromFn = findCallerFn(content, stmt.namedImports[0]) ?? node.functions[0];
+        add(node.id, target.id, "imports", fromFn, toFn);
+      } else {
+        // Default import — use first functions from each side
+        add(node.id, target.id, "imports", node.functions[0], target.functions[0]);
+      }
     }
   }
 
-  return edges.slice(0, 20);
+  return edges.slice(0, 60);
 }
 
 // ────────────────────────────────────────────────────────────
@@ -462,7 +565,15 @@ export async function GET(req: NextRequest) {
         { error: `Repository ${owner}/${repo} not found or is private.` },
         { status: 404 }
       );
-    if (infoRes.status === 403)
+    if (infoRes.status === 401)
+      return NextResponse.json(
+        {
+          error:
+            "GitHub token is invalid or expired. Please update GITHUB_TOKEN in your .env file.",
+        },
+        { status: 401 }
+      );
+    if (infoRes.status === 403 || infoRes.status === 429)
       return NextResponse.json(
         {
           error:
@@ -472,7 +583,7 @@ export async function GET(req: NextRequest) {
       );
     if (!infoRes.ok)
       return NextResponse.json(
-        { error: "Could not fetch repository info from GitHub." },
+        { error: `GitHub API error: ${infoRes.status} ${infoRes.statusText}` },
         { status: 502 }
       );
 
@@ -501,13 +612,14 @@ export async function GET(req: NextRequest) {
     const framework = detectFramework(allFiles);
     const language = detectLanguage(allFiles);
 
-    // 3. Rank & select up to 15 important files
+    // 3. Rank & select all important files (up to 60 nodes); fetch content for top 35
     type Ranked = { path: string; type: NodeType; priority: number };
     const ranked: Ranked[] = allFiles
       .map((p) => ({ path: p, ...categorize(p) }))
       .filter((f) => f.type != null) as Ranked[];
     ranked.sort((a, b) => b.priority - a.priority);
-    const selected = ranked.slice(0, 15);
+    const selected = ranked.slice(0, 60);
+    const contentCandidates = selected.slice(0, 35);
 
     if (!selected.length)
       return NextResponse.json(
@@ -515,10 +627,10 @@ export async function GET(req: NextRequest) {
         { status: 422 }
       );
 
-    // 4. Fetch file contents in parallel
+    // 4. Fetch file contents in parallel (only top 35 by priority)
     const contentMap: Record<string, string> = {};
     await Promise.all(
-      selected.map(async ({ path }) => {
+      contentCandidates.map(async ({ path }) => {
         try {
           const r = await fetch(
             `${GITHUB_API}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`,

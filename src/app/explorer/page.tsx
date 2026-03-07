@@ -57,6 +57,7 @@ export default function ExplorerPage() {
   const [activeStep, setActiveStep] = useState<string>("ls2");
   const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
   const [showHackathon, setShowHackathon] = useState(false);
+  const [exploredNode, setExploredNode] = useState<string | null>(null);
 
   // Load real repo from localStorage, fall back to demo
   useEffect(() => {
@@ -73,6 +74,25 @@ export default function ExplorerPage() {
   const handleNodeSelect = (node: GraphNode | null) => {
     setSelectedNode(node);
     if (node) setRightPanel("detail");
+  };
+
+  const handleNodeExplore = (node: GraphNode) => {
+    if (exploredNode === node.id) {
+      // Toggle off
+      setExploredNode(null);
+      setHighlightedNodes([]);
+      return;
+    }
+    setExploredNode(node.id);
+    setSelectedNode(node);
+    setRightPanel("detail");
+    // Highlight the explored node and all directly connected nodes
+    const connected = new Set<string>([node.id]);
+    repo.edges.forEach((e) => {
+      if (e.source === node.id) connected.add(e.target);
+      if (e.target === node.id) connected.add(e.source);
+    });
+    setHighlightedNodes([...connected]);
   };
 
   const handleStepClick = (stepId: string) => {
@@ -209,6 +229,8 @@ export default function ExplorerPage() {
             selectedNode={selectedNode}
             onNodeSelect={handleNodeSelect}
             highlightedNodes={highlightedNodes}
+            exploredNode={exploredNode}
+            onNodeExplore={handleNodeExplore}
           />
 
           {/* Hackathon mode overlay */}
@@ -292,8 +314,12 @@ export default function ExplorerPage() {
             {rightPanel === "detail" && (
               <NodeDetail
                 node={selectedNode}
-                onClose={() => setSelectedNode(null)}
+                onClose={() => { setSelectedNode(null); setExploredNode(null); setHighlightedNodes([]); }}
                 language={language}
+                edges={repo.edges}
+                allNodes={repo.nodes}
+                onExploreNode={handleNodeExplore}
+                onHighlightPath={setHighlightedNodes}
               />
             )}
             {rightPanel === "chat" && (

@@ -1,15 +1,19 @@
 "use client";
 import { motion,AnimatePresence } from "framer-motion";
 import { useState } from "react";
-import { X, ExternalLink, FileCode, GitBranch, Layers, Zap } from "lucide-react";
+import { X, ExternalLink, FileCode, GitBranch, Layers, Zap, Link2 } from "lucide-react";
 import { NODE_COLORS } from "@/lib/types";
-import type { GraphNode, Language } from "@/lib/types";
+import type { GraphNode, GraphEdge, Language } from "@/lib/types";
 import { LANGUAGE_LABELS } from "@/lib/types";
 
 interface NodeDetailProps {
   node: GraphNode | null;
   onClose: () => void;
   language: Language;
+  edges?: GraphEdge[];
+  allNodes?: GraphNode[];
+  onExploreNode?: (node: GraphNode) => void;
+  onHighlightPath?: (ids: string[]) => void;
 }
 
 const COMPLEXITY_COLORS = {
@@ -29,8 +33,22 @@ const AI_EXPLANATIONS: Record<Language, (node: GraphNode) => string> = {
   gu: (n) => `આ \`${n.file}\` ફાઈલ ${n.label} functionality manage કરે છે. આમાં ${n.linesOfCode} lines of code છે.`,
 };
 
-export default function NodeDetail({ node, onClose, language }: NodeDetailProps) {
-  const [tab, setTab] = useState<"overview" | "code">("overview");
+export default function NodeDetail({ node, onClose, language, edges = [], allNodes = [], onExploreNode, onHighlightPath }: NodeDetailProps) {
+  const [tab, setTab] = useState<"overview" | "code" | "connections">("overview");
+
+  // Compute outgoing and incoming connections for the connections tab
+  const outgoing = node
+    ? edges
+        .filter((e) => e.source === node.id)
+        .map((e) => ({ edge: e, connectedNode: allNodes.find((n) => n.id === e.target) }))
+        .filter((x) => x.connectedNode != null) as { edge: GraphEdge; connectedNode: GraphNode }[]
+    : [];
+  const incoming = node
+    ? edges
+        .filter((e) => e.target === node.id)
+        .map((e) => ({ edge: e, connectedNode: allNodes.find((n) => n.id === e.source) }))
+        .filter((x) => x.connectedNode != null) as { edge: GraphEdge; connectedNode: GraphNode }[]
+    : [];
 
   return (
     <AnimatePresence>
@@ -113,7 +131,8 @@ export default function NodeDetail({ node, onClose, language }: NodeDetailProps)
           >
             {[
               { id: "overview", label: "Overview" },
-              { id: "code", label: "Code Preview" },
+              { id: "connections", label: `Links${outgoing.length + incoming.length > 0 ? ` (${outgoing.length + incoming.length})` : ""}` },
+              { id: "code", label: "Code" },
             ].map(({ id, label }) => (
               <button
                 key={id}
@@ -208,6 +227,128 @@ export default function NodeDetail({ node, onClose, language }: NodeDetailProps)
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tab === "connections" && (
+              <div className="p-4 space-y-5 overflow-y-auto">
+                {outgoing.length === 0 && incoming.length === 0 && (
+                  <div className="text-center py-8">
+                    <Link2 className="w-6 h-6 mx-auto mb-2" style={{ color: "#6B6B80" }} />
+                    <p className="text-xs" style={{ color: "#6B6B80" }}>No connections detected for this file.</p>
+                  </div>
+                )}
+
+                {/* Outgoing */}
+                {outgoing.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: "#6B6B80" }}>
+                      This file imports →
+                    </p>
+                    {outgoing.map(({ edge, connectedNode }) => (
+                      <div
+                        key={edge.id}
+                        className="mb-2 p-2.5 rounded-xl"
+                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-base flex-shrink-0">{NODE_COLORS[connectedNode.type].icon}</span>
+                            <span className="text-xs font-semibold font-mono truncate" style={{ color: NODE_COLORS[connectedNode.type].text }}>
+                              {connectedNode.label}
+                            </span>
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => onHighlightPath?.([node!.id, connectedNode.id])}
+                              className="px-2 py-0.5 rounded-md text-[9px] font-mono transition-colors hover:opacity-80"
+                              style={{ background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.3)", color: "#F5A623" }}
+                            >
+                              Show Path
+                            </button>
+                            <button
+                              onClick={() => onExploreNode?.(connectedNode)}
+                              className="px-2 py-0.5 rounded-md text-[9px] font-mono transition-colors hover:opacity-80"
+                              style={{ background: "rgba(0,210,160,0.1)", border: "1px solid rgba(0,210,160,0.25)", color: "#00D2A0" }}
+                            >
+                              Explore
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[9px] font-mono mb-1.5 truncate" style={{ color: "#6B6B80" }}>{connectedNode.file}</p>
+                        {edge.functionLink ? (
+                          <div
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
+                            style={{ background: "rgba(110,86,207,0.08)", border: "1px solid rgba(110,86,207,0.15)" }}
+                          >
+                            <span className="text-[10px] font-mono" style={{ color: "#A78BFA" }}>{edge.functionLink.fromFn}</span>
+                            <span className="text-[10px]" style={{ color: "#6B6B80" }}>→</span>
+                            <span className="text-[10px] font-mono" style={{ color: "#00D2A0" }}>{edge.functionLink.toFn}</span>
+                          </div>
+                        ) : (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                            style={{ background: "rgba(255,255,255,0.04)", color: "#6B6B80" }}
+                          >
+                            {edge.label ?? "imports"}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Incoming */}
+                {incoming.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: "#6B6B80" }}>
+                      ← Used by these files
+                    </p>
+                    {incoming.map(({ edge, connectedNode }) => (
+                      <div
+                        key={edge.id}
+                        className="mb-2 p-2.5 rounded-xl"
+                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-base flex-shrink-0">{NODE_COLORS[connectedNode.type].icon}</span>
+                            <span className="text-xs font-semibold font-mono truncate" style={{ color: NODE_COLORS[connectedNode.type].text }}>
+                              {connectedNode.label}
+                            </span>
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => onHighlightPath?.([connectedNode.id, node!.id])}
+                              className="px-2 py-0.5 rounded-md text-[9px] font-mono transition-colors hover:opacity-80"
+                              style={{ background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.3)", color: "#F5A623" }}
+                            >
+                              Show Path
+                            </button>
+                            <button
+                              onClick={() => onExploreNode?.(connectedNode)}
+                              className="px-2 py-0.5 rounded-md text-[9px] font-mono transition-colors hover:opacity-80"
+                              style={{ background: "rgba(0,210,160,0.1)", border: "1px solid rgba(0,210,160,0.25)", color: "#00D2A0" }}
+                            >
+                              Explore
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[9px] font-mono mb-1.5 truncate" style={{ color: "#6B6B80" }}>{connectedNode.file}</p>
+                        {edge.functionLink && (
+                          <div
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
+                            style={{ background: "rgba(110,86,207,0.08)", border: "1px solid rgba(110,86,207,0.15)" }}
+                          >
+                            <span className="text-[10px] font-mono" style={{ color: "#A78BFA" }}>{edge.functionLink.fromFn}</span>
+                            <span className="text-[10px]" style={{ color: "#6B6B80" }}>→</span>
+                            <span className="text-[10px] font-mono" style={{ color: "#00D2A0" }}>{edge.functionLink.toFn}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

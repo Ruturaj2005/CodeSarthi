@@ -7,6 +7,7 @@ export type NodeType =
   | "model"
   | "utility"
   | "config"
+  | "style"
   | "external";
 
 export interface GraphNode {
@@ -30,6 +31,7 @@ export interface GraphEdge {
   target: string;
   label?: string;
   animated?: boolean;
+  functionLink?: { fromFn: string; toFn: string };
 }
 
 export interface FlowStep {
@@ -105,5 +107,6 @@ export const NODE_COLORS: Record<NodeType, { bg: string; border: string; text: s
   model:      { bg: "rgba(34,197,94,0.15)",     border: "#22C55E", text: "#4ADE80", glow: "rgba(34,197,94,0.4)",   icon: "🗄️" },
   utility:    { bg: "rgba(107,114,128,0.15)",   border: "#6B7280", text: "#9CA3AF", glow: "rgba(107,114,128,0.4)", icon: "🔧" },
   config:     { bg: "rgba(239,68,68,0.15)",     border: "#EF4444", text: "#F87171", glow: "rgba(239,68,68,0.4)",   icon: "🔴" },
+  style:      { bg: "rgba(236,72,153,0.15)",    border: "#EC4899", text: "#F472B6", glow: "rgba(236,72,153,0.4)",  icon: "🎨" },
   external:   { bg: "rgba(30,30,46,0.8)",       border: "#2E2E4E", text: "#6B6B80", glow: "rgba(30,30,46,0.4)",   icon: "📦" },
 };
