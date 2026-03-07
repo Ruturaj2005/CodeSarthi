@@ -1,0 +1,266 @@
+"use client";
+import { motion,AnimatePresence } from "framer-motion";
+import { useState } from "react";
+import { X, ExternalLink, FileCode, GitBranch, Layers, Zap } from "lucide-react";
+import { NODE_COLORS } from "@/lib/types";
+import type { GraphNode, Language } from "@/lib/types";
+import { LANGUAGE_LABELS } from "@/lib/types";
+
+interface NodeDetailProps {
+  node: GraphNode | null;
+  onClose: () => void;
+  language: Language;
+}
+
+const COMPLEXITY_COLORS = {
+  low: { bg: "rgba(0,210,160,0.12)", text: "#00D2A0", border: "rgba(0,210,160,0.3)" },
+  medium: { bg: "rgba(245,166,35,0.12)", text: "#F5A623", border: "rgba(245,166,35,0.3)" },
+  high: { bg: "rgba(255,77,109,0.12)", text: "#FF4D6D", border: "rgba(255,77,109,0.3)" },
+};
+
+const AI_EXPLANATIONS: Record<Language, (node: GraphNode) => string> = {
+  en: (n) => `This \`${n.file}\` ${n.type === "model" ? "defines the data structure for" : n.type === "controller" ? "handles HTTP requests for" : n.type === "service" ? "contains business logic for" : "manages"} the ${n.label} functionality. It contains ${n.linesOfCode} lines of code with ${n.complexity} complexity.`,
+  hi: (n) => `यह \`${n.file}\` file ${n.label} functionality को ${n.type === "model" ? "data structure define करती है" : n.type === "controller" ? "HTTP requests handle करती है" : n.type === "service" ? "business logic contain करती है" : "manage करती है"}। इसमें ${n.linesOfCode} lines of code हैं।`,
+  ta: (n) => `இந்த \`${n.file}\` கோப்பு ${n.label} செயல்பாட்டை ${n.type === "controller" ? "HTTP requests கையாளுகிறது" : "நிர்வகிக்கிறது"}. இதில் ${n.linesOfCode} lines of code உள்ளன.`,
+  te: (n) => `ఈ \`${n.file}\` ఫైల్ ${n.label} functionality ని ${n.type === "controller" ? "HTTP requests handle చేస్తుంది" : "manage చేస్తుంది"}. ఇందులో ${n.linesOfCode} lines of code ఉన్నాయి.`,
+  kn: (n) => `ಈ \`${n.file}\` ಫೈಲ್ ${n.label} functionality ಅನ್ನು manage ಮಾಡುತ್ತದೆ. ಇದರಲ್ಲಿ ${n.linesOfCode} lines of code ಇದೆ.`,
+  bn: (n) => `এই \`${n.file}\` ফাইলটি ${n.label} functionality পরিচালনা করে। এতে ${n.linesOfCode} lines of code রয়েছে।`,
+  mr: (n) => `हे \`${n.file}\` file ${n.label} functionality manage करते। यात ${n.linesOfCode} lines of code आहेत.`,
+  gu: (n) => `આ \`${n.file}\` ફાઈલ ${n.label} functionality manage કરે છે. આમાં ${n.linesOfCode} lines of code છે.`,
+};
+
+export default function NodeDetail({ node, onClose, language }: NodeDetailProps) {
+  const [tab, setTab] = useState<"overview" | "code">("overview");
+
+  return (
+    <AnimatePresence>
+      {node && (
+        <motion.div
+          key={node.id}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 20 }}
+          transition={{ duration: 0.25 }}
+          className="h-full flex flex-col overflow-hidden"
+        >
+          {/* Header */}
+          <div
+            className="px-4 pt-4 pb-3 border-b flex-shrink-0"
+            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+                  style={{
+                    background: NODE_COLORS[node.type].bg,
+                    border: `1px solid ${NODE_COLORS[node.type].border}40`,
+                  }}
+                >
+                  {NODE_COLORS[node.type].icon}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm leading-tight" style={{ color: "#E8E8F0" }}>
+                    {node.label}
+                  </h3>
+                  <p className="text-[10px] font-mono leading-tight mt-0.5" style={{ color: "#6B6B80" }}>
+                    {node.file}
+                  </p>
+                </div>
+              </div>
+              <button onClick={onClose} className="p-1 rounded hover:bg-white/10 transition-colors flex-shrink-0">
+                <X className="w-4 h-4" style={{ color: "#6B6B80" }} />
+              </button>
+            </div>
+
+            {/* Meta badges */}
+            <div className="flex flex-wrap gap-1.5">
+              <span
+                className="px-2 py-0.5 rounded-md text-[10px] font-mono capitalize"
+                style={{
+                  background: NODE_COLORS[node.type].bg,
+                  border: `1px solid ${NODE_COLORS[node.type].border}50`,
+                  color: NODE_COLORS[node.type].text,
+                }}
+              >
+                {NODE_COLORS[node.type].icon} {node.type}
+              </span>
+              <span
+                className="px-2 py-0.5 rounded-md text-[10px] font-mono capitalize"
+                style={{
+                  background: COMPLEXITY_COLORS[node.complexity].bg,
+                  border: `1px solid ${COMPLEXITY_COLORS[node.complexity].border}`,
+                  color: COMPLEXITY_COLORS[node.complexity].text,
+                }}
+              >
+                {node.complexity} complexity
+              </span>
+              {node.linesOfCode > 0 && (
+                <span
+                  className="px-2 py-0.5 rounded-md text-[10px] font-mono"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "#6B6B80" }}
+                >
+                  {node.linesOfCode} lines
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div
+            className="flex border-b flex-shrink-0"
+            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+          >
+            {[
+              { id: "overview", label: "Overview" },
+              { id: "code", label: "Code Preview" },
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id as typeof tab)}
+                className="flex-1 py-2.5 text-xs font-medium transition-all"
+                style={
+                  tab === id
+                    ? { borderBottom: "2px solid #6E56CF", color: "#A78BFA" }
+                    : { borderBottom: "2px solid transparent", color: "#6B6B80" }
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto">
+            {tab === "overview" && (
+              <div className="p-4 space-y-4">
+                {/* AI Explanation */}
+                <div
+                  className="p-3 rounded-xl"
+                  style={{ background: "rgba(110,86,207,0.07)", border: "1px solid rgba(110,86,207,0.15)" }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
+                      style={{ background: "linear-gradient(135deg, #6E56CF, #00D2A0)" }}
+                    >
+                      🤖
+                    </div>
+                    <span className="text-xs font-medium" style={{ color: "#A78BFA" }}>
+                      AI Sarthi · {LANGUAGE_LABELS[language]}
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: "#C0C0D0" }}>
+                    {AI_EXPLANATIONS[language](node)}
+                  </p>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <p className="text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#6B6B80" }}>
+                    Description
+                  </p>
+                  <p className="text-xs leading-relaxed" style={{ color: "#9090A0" }}>
+                    {node.description}
+                  </p>
+                </div>
+
+                {/* Key Functions */}
+                {node.functions.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Zap className="w-3.5 h-3.5" style={{ color: "#6E56CF" }} />
+                      <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#6B6B80" }}>
+                        Key Functions
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {node.functions.map((fn) => (
+                        <span
+                          key={fn}
+                          className="px-2 py-1 rounded-md text-[11px] font-mono"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "#9090A0" }}
+                        >
+                          {fn}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dependencies */}
+                {node.dependencies.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <GitBranch className="w-3.5 h-3.5" style={{ color: "#6E56CF" }} />
+                      <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#6B6B80" }}>
+                        Dependencies
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {node.dependencies.map((dep) => (
+                        <span
+                          key={dep}
+                          className="px-2 py-1 rounded-md text-[11px] font-mono"
+                          style={{ background: "rgba(0,210,160,0.07)", border: "1px solid rgba(0,210,160,0.15)", color: "#00D2A0" }}
+                        >
+                          {dep}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tab === "code" && (
+              <div className="h-full flex flex-col">
+                <div
+                  className="flex items-center justify-between px-3 py-2 border-b"
+                  style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}
+                >
+                  <span className="text-[10px] font-mono" style={{ color: "#6B6B80" }}>
+                    {node.file}
+                  </span>
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 rounded-full" style={{ background: "#FF5F57" }} />
+                    <div className="w-2 h-2 rounded-full" style={{ background: "#FFBD2E" }} />
+                    <div className="w-2 h-2 rounded-full" style={{ background: "#28C840" }} />
+                  </div>
+                </div>
+                <pre
+                  className="flex-1 p-4 overflow-auto text-[11px] leading-5 font-mono"
+                  style={{ color: "#C0C0D0", background: "rgba(0,0,0,0.2)" }}
+                >
+                  <code>{node.codePreview}</code>
+                </pre>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {!node && (
+        <motion.div
+          key="empty"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="h-full flex flex-col items-center justify-center px-6 text-center"
+        >
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
+            style={{ background: "rgba(110,86,207,0.1)", border: "1px solid rgba(110,86,207,0.2)" }}
+          >
+            <FileCode className="w-6 h-6" style={{ color: "#6E56CF" }} />
+          </div>
+          <p className="text-sm font-medium mb-1" style={{ color: "#E8E8F0" }}>
+            Select a node
+          </p>
+          <p className="text-xs" style={{ color: "#6B6B80" }}>
+            Click any node in the CodeMap to view its details, AI explanation, and code preview.
+          </p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
