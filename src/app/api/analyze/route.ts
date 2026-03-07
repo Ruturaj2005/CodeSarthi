@@ -4,6 +4,7 @@ import type {
   GraphNode,
   GraphEdge,
   NodeType,
+  ArchLayer,
   LearningStep,
   ExecutionFlow,
   FlowStep,
@@ -204,38 +205,89 @@ function detectLanguage(files: string[]): string {
 }
 
 // ────────────────────────────────────────────────────────────
-// Graph layout
+// Architectural layer / group / importance
 // ────────────────────────────────────────────────────────────
-function layoutNodes(
-  typed: Array<{ id: string; type: NodeType }>
-): Record<string, { x: number; y: number }> {
-  const rowOf: Record<NodeType, number> = {
-    entry: 0,
-    config: 0,
-    page: 1,
-    component: 1,
-    style: 1,
-    controller: 2,
-    service: 2,
-    utility: 3,
-    model: 3,
-    external: 4,
+function layerOf(type: NodeType): ArchLayer {
+  switch (type) {
+    case "entry":
+    case "page":
+    case "component":
+    case "style":
+      return "frontend";
+    case "controller":
+      return "routing";
+    case "service":
+      return "logic";
+    case "model":
+      return "data";
+    case "config":
+    case "utility":
+    case "external":
+      return "infra";
+  }
+}
+
+function groupOf(path: string): string {
+  const parts = path.toLowerCase().split("/");
+  // Look for known domain folder patterns: apps/<domain>/, modules/<domain>/, src/<domain>/
+  const domainPrefixes = ["apps", "modules", "src", "lib", "packages", "features"];
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (domainPrefixes.includes(parts[i]) && parts[i + 1]) {
+      return parts[i + 1];
+    }
+  }
+  // Fallback: use parent folder
+  if (parts.length >= 2) return parts[parts.length - 2];
+  return "core";
+}
+
+function importanceOf(type: NodeType, linesOfCode: number): number {
+  const base: Record<NodeType, number> = {
+    entry: 7, page: 6, component: 5, style: 2,
+    controller: 8, service: 9, model: 8,
+    utility: 3, config: 2, external: 4,
   };
-  const rows: Record<number, string[]> = {};
-  for (const { id, type } of typed) {
-    const r = rowOf[type] ?? 3;
-    (rows[r] = rows[r] ?? []).push(id);
+  const b = base[type] ?? 5;
+  // Boost importance for larger files (they likely have more logic)
+  if (linesOfCode > 150) return Math.min(10, b + 1);
+  return b;
+}
+
+// ────────────────────────────────────────────────────────────
+// Graph layout — layered swim-lane with domain grouping
+// ────────────────────────────────────────────────────────────
+const LAYER_ORDER: ArchLayer[] = ["frontend", "routing", "logic", "data", "infra"];
+const LANE_HEIGHT = 180;
+const LANE_PAD_TOP = 60;
+const NODE_SPACING_X = 180;
+const GROUP_GAP = 40;
+
+function layoutNodes(
+  typed: Array<{ id: string; type: NodeType; layer: ArchLayer; group: string }>
+): Record<string, { x: number; y: number }> {
+  // Group nodes: layer → group → ids
+  const byLayer = new Map<ArchLayer, Map<string, string[]>>();
+  for (const { id, layer, group } of typed) {
+    if (!byLayer.has(layer)) byLayer.set(layer, new Map());
+    const groups = byLayer.get(layer)!;
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group)!.push(id);
   }
+
   const out: Record<string, { x: number; y: number }> = {};
-  for (const [rStr, ids] of Object.entries(rows)) {
-    const r = parseInt(rStr);
-    const y = 40 + r * 160;
-    const totalW = ids.length * 180;
-    const startX = Math.max(20, (900 - totalW) / 2);
-    ids.forEach((id, i) => {
-      out[id] = { x: startX + i * 180, y };
-    });
-  }
+  LAYER_ORDER.forEach((layer, laneIdx) => {
+    const groups = byLayer.get(layer);
+    if (!groups) return;
+    const y = LANE_PAD_TOP + laneIdx * LANE_HEIGHT;
+    let xCursor = 80;
+    for (const [, ids] of groups) {
+      ids.forEach((id) => {
+        out[id] = { x: xCursor, y: y + 30 };
+        xCursor += NODE_SPACING_X;
+      });
+      xCursor += GROUP_GAP; // gap between groups
+    }
+  });
   return out;
 }
 
@@ -653,9 +705,10 @@ export async function GET(req: NextRequest) {
     );
 
     // 5. Build nodes
-    const positions = layoutNodes(selected.map((f) => ({ id: f.path, type: f.type })));
+    const positions = layoutNodes(selected.map((f) => ({ id: f.path, type: f.type, layer: layerOf(f.type), group: groupOf(f.path) })));
     const nodes: GraphNode[] = selected.map((file, idx) => {
       const content = contentMap[file.path] ?? "";
+      const loc = content.split("\n").length;
       return {
         id: `n${idx + 1}`,
         label: file.path.split("/").pop() ?? file.path,
@@ -667,13 +720,16 @@ export async function GET(req: NextRequest) {
         functions: parseFunctions(content, file.path),
         dependencies: parseImports(content, file.path).slice(0, 5),
         codePreview: content || "# File content unavailable",
-        linesOfCode: content.split("\n").length,
+        linesOfCode: loc,
         complexity:
-          content.split("\n").length < 60
+          loc < 60
             ? "low"
-            : content.split("\n").length < 200
+            : loc < 200
             ? "medium"
             : "high",
+        layer: layerOf(file.type),
+        group: groupOf(file.path),
+        importance: importanceOf(file.type, loc),
       };
     });
 

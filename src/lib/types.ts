@@ -10,6 +10,16 @@ export type NodeType =
   | "style"
   | "external";
 
+export type ArchLayer = "frontend" | "routing" | "logic" | "data" | "infra";
+
+export const LAYER_META: Record<ArchLayer, { label: string; color: string; icon: string; description: string }> = {
+  frontend: { label: "Frontend",       color: "#3B82F6", icon: "🖥️", description: "UI pages, components & styles" },
+  routing:  { label: "Routing",        color: "#A855F7", icon: "🔀", description: "URL routing & request dispatch" },
+  logic:    { label: "Business Logic", color: "#F97316", icon: "⚙️", description: "Controllers, services & core logic" },
+  data:     { label: "Data Layer",     color: "#22C55E", icon: "🗄️", description: "Models, schemas & database" },
+  infra:    { label: "Infrastructure", color: "#6B7280", icon: "🔧", description: "Config, utilities & helpers" },
+};
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -23,6 +33,9 @@ export interface GraphNode {
   codePreview: string;
   linesOfCode: number;
   complexity: "low" | "medium" | "high";
+  layer: ArchLayer;
+  group: string;
+  importance: number;
 }
 
 export interface GraphEdge {

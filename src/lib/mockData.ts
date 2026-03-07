@@ -354,6 +354,9 @@ if __name__ == '__main__':
     main()`,
       linesOfCode: 22,
       complexity: "low",
+      layer: "frontend",
+      group: "core",
+      importance: 6,
     },
     {
       id: "n2",
@@ -374,6 +377,9 @@ urlpatterns = [
 ]`,
       linesOfCode: 18,
       complexity: "low",
+      layer: "routing",
+      group: "core",
+      importance: 8,
     },
     {
       id: "n3",
@@ -398,6 +404,9 @@ urlpatterns = [
         )`,
       linesOfCode: 64,
       complexity: "medium",
+      layer: "logic",
+      group: "auth",
+      importance: 9,
     },
     {
       id: "n4",
@@ -421,6 +430,9 @@ urlpatterns = [
                   'created_at', 'is_active']`,
       linesOfCode: 89,
       complexity: "medium",
+      layer: "logic",
+      group: "users",
+      importance: 7,
     },
     {
       id: "n5",
@@ -450,6 +462,9 @@ urlpatterns = [
         return Response(generate_tokens(user))`,
       linesOfCode: 112,
       complexity: "high",
+      layer: "logic",
+      group: "auth",
+      importance: 9,
     },
     {
       id: "n6",
@@ -478,6 +493,9 @@ urlpatterns = [
         )`,
       linesOfCode: 156,
       complexity: "medium",
+      layer: "data",
+      group: "users",
+      importance: 8,
     },
     {
       id: "n7",
@@ -503,6 +521,9 @@ CREATE INDEX idx_user_email
     ON users_user(email);`,
       linesOfCode: 0,
       complexity: "medium",
+      layer: "data",
+      group: "core",
+      importance: 7,
     },
     {
       id: "n8",
@@ -534,6 +555,9 @@ SIMPLE_JWT = {
 }`,
       linesOfCode: 210,
       complexity: "medium",
+      layer: "infra",
+      group: "core",
+      importance: 3,
     },
     {
       id: "n9",
@@ -561,6 +585,9 @@ SIMPLE_JWT = {
 }`,
       linesOfCode: 98,
       complexity: "medium",
+      layer: "frontend",
+      group: "frontend",
+      importance: 8,
     },
   ],
   edges: [
