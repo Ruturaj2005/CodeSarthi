@@ -87,7 +87,7 @@ export const LOGIN_FLOW: ExecutionFlow = {
       title: "User Submits Login Form",
       nodeId: "n9",
       description: "User enters email and password in the React frontend. The form validates inputs client-side before submission.",
-      descriptionHi: "User अपना email और password React frontend में enter करता है। Form client-side पर inputs validate करता है submission से पहले।",
+
       functionName: "handleSubmit()",
       language: "typescript",
       codeSnippet: `const handleSubmit = async (e: FormEvent) => {
@@ -111,7 +111,7 @@ export const LOGIN_FLOW: ExecutionFlow = {
       title: "API Request Sent",
       nodeId: "n5",
       description: "authService.js calls POST /api/auth/login with credentials. Axios interceptors add CSRF headers automatically.",
-      descriptionHi: "authService.js, POST /api/auth/login को credentials के साथ call करता है। Axios interceptors automatically CSRF headers add करते हैं।",
+
       functionName: "authService.login()",
       language: "javascript",
       codeSnippet: `// authService.js
@@ -137,7 +137,7 @@ export const authService = {
       title: "URL Router Dispatches",
       nodeId: "n2",
       description: "Django's URL router matches /api/auth/login/ and dispatches to the AuthController view class.",
-      descriptionHi: "Django का URL router /api/auth/login/ को match करता है और AuthController view class पर dispatch करता है।",
+
       functionName: "urlpatterns",
       language: "python",
       codeSnippet: `# urls.py
@@ -163,7 +163,7 @@ urlpatterns = [
       title: "Controller Validates",
       nodeId: "n3",
       description: "AuthController.post() receives the request. Uses LoginSerializer to validate email format and password strength.",
-      descriptionHi: "AuthController.post() request receive करता है। LoginSerializer use करके email format और password strength validate करता है।",
+
       functionName: "AuthController.post()",
       language: "python",
       codeSnippet: `# views/auth.py
@@ -192,7 +192,7 @@ class AuthController(APIView):
       title: "Database Query",
       nodeId: "n6",
       description: "User model queries PostgreSQL to find the account. Django's ORM generates a parameterized SQL query — safe from SQL injection.",
-      descriptionHi: "User model PostgreSQL को query करता है account find करने के लिए। Django का ORM parameterized SQL query generate करता है — SQL injection से safe।",
+
       functionName: "User.objects.get()",
       language: "python",
       codeSnippet: `# models/user.py
@@ -218,7 +218,7 @@ class User(AbstractBaseUser):
       title: "JWT Token Generated",
       nodeId: "n5",
       description: "tokenUtils.py generates a signed JWT access token (15 min expiry) and refresh token (7 days). Tokens are signed with the server's SECRET_KEY.",
-      descriptionHi: "tokenUtils.py एक signed JWT access token (15 min expiry) और refresh token (7 days) generate करता है। Tokens server के SECRET_KEY से sign होते हैं।",
+
       functionName: "generate_tokens()",
       language: "python",
       codeSnippet: `# utils/tokens.py
@@ -250,7 +250,7 @@ export const API_FLOW: ExecutionFlow = {
     {
       id: "a1", step: 1, title: "Client Request", nodeId: "n9",
       description: "React component calls the API via axios with auth headers.",
-      descriptionHi: "React component axios के through auth headers के साथ API call करता है।",
+
       functionName: "apiClient.get()",
       language: "typescript",
       codeSnippet: `const { data } = await apiClient.get('/api/users/', {
@@ -260,7 +260,7 @@ export const API_FLOW: ExecutionFlow = {
     {
       id: "a2", step: 2, title: "Auth Middleware", nodeId: "n4",
       description: "JWT middleware validates the access token before the request reaches the view.",
-      descriptionHi: "JWT middleware access token validate करता है request view तक पहुंचने से पहले।",
+
       functionName: "JWTAuthentication.authenticate()",
       language: "python",
       codeSnippet: `class JWTAuthentication(BaseAuthentication):
@@ -272,7 +272,7 @@ export const API_FLOW: ExecutionFlow = {
     {
       id: "a3", step: 3, title: "View Processes", nodeId: "n3",
       description: "The view applies filters, calls the service layer, and paginates results.",
-      descriptionHi: "View filters apply करता है, service layer call करता है, और results paginate करता है।",
+
       functionName: "UserListView.get()",
       language: "python",
       codeSnippet: `class UserListView(ListAPIView):
@@ -284,7 +284,7 @@ export const API_FLOW: ExecutionFlow = {
     {
       id: "a4", step: 4, title: "Database Query", nodeId: "n6",
       description: "ORM generates optimized SQL with select_related to avoid N+1 queries.",
-      descriptionHi: "ORM optimized SQL generate करता है N+1 queries avoid करने के लिए।",
+
       functionName: "User.objects.all()",
       language: "python",
       codeSnippet: `queryset = User.objects.select_related(
@@ -296,7 +296,7 @@ export const API_FLOW: ExecutionFlow = {
     {
       id: "a5", step: 5, title: "Response Serialized", nodeId: "n4",
       description: "Serializer converts model instances to JSON, applying field-level permissions.",
-      descriptionHi: "Serializer model instances को JSON में convert करता है, field-level permissions apply करके।",
+
       functionName: "UserSerializer.to_representation()",
       language: "python",
       codeSnippet: `class UserSerializer(serializers.ModelSerializer):

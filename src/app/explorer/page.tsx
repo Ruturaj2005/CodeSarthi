@@ -54,7 +54,7 @@ export default function ExplorerPage() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanel>("detail");
   const [language, setLanguage] = useState<Language>("en");
-  const [activeStep, setActiveStep] = useState<string>("ls2");
+  const [activeStep, setActiveStep] = useState<string>("");
   const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
   const [showHackathon, setShowHackathon] = useState(false);
   const [exploredNode, setExploredNode] = useState<string | null>(null);
@@ -62,13 +62,12 @@ export default function ExplorerPage() {
   // Load real repo from localStorage, fall back to demo
   useEffect(() => {
     const stored = repoStore.load();
-    if (stored) {
-      setRepo(stored);
-      setIsDemo(false);
-    } else {
-      setRepo(MOCK_REPO);
-      setIsDemo(true);
-    }
+    const r = stored ?? MOCK_REPO;
+    setRepo(r);
+    setIsDemo(!stored);
+    // Set first available step as active
+    const firstStep = r.learningPath.find((s) => s.status !== "completed") ?? r.learningPath[0];
+    if (firstStep) setActiveStep(firstStep.id);
   }, []);
 
   const handleNodeSelect = (node: GraphNode | null) => {

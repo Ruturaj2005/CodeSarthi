@@ -34,16 +34,28 @@ export interface GraphEdge {
   functionLink?: { fromFn: string; toFn: string };
 }
 
+export interface DataShape {
+  [key: string]: string;
+}
+
 export interface FlowStep {
   id: string;
   step: number;
   title: string;
   nodeId: string;
-  description: string;
-  descriptionHi?: string;
-  codeSnippet: string;
-  language: string;
   functionName: string;
+  language: string;
+  codeSnippet: string;
+  description: string;
+  // Enrichment fields — all optional so mock data remains valid
+  analogy?: string;
+  sarthiAlert?: boolean;
+  sarthiAlertReason?: string;
+  securityFlags?: string[];
+  receives?: DataShape;
+  sends?: DataShape;
+  edgeType?: string;
+  narration?: Record<string, string>;
 }
 
 export interface ExecutionFlow {

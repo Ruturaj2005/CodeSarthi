@@ -22,9 +22,9 @@ function getHeaders(): HeadersInit {
   return h;
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // File categorisation
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 const SKIP_RE = [
   /node_modules\//i,
   /__pycache__\//i,
@@ -153,9 +153,9 @@ function categorize(path: string): { type: NodeType; priority: number } | null {
   return null;
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // Meta detection
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 function detectFramework(files: string[]): string {
   const names = new Set(files.map((f) => f.split("/").pop()?.toLowerCase() ?? ""));
   const all = files.join("\n").toLowerCase();
@@ -203,9 +203,9 @@ function detectLanguage(files: string[]): string {
   return map[best] ?? "Unknown";
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // Graph layout
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 function layoutNodes(
   typed: Array<{ id: string; type: NodeType }>
 ): Record<string, { x: number; y: number }> {
@@ -239,9 +239,9 @@ function layoutNodes(
   return out;
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // Content parsing
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 
 /** Per-statement import extraction: returns module basename + named symbols */
 function parseImportStatements(
@@ -342,9 +342,9 @@ function parseFunctions(content: string, path: string): string[] {
   return [...new Set(fns)].slice(0, 8);
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // Edge building
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 function buildEdges(
   nodes: GraphNode[],
   contentMap: Record<string, string>
@@ -353,7 +353,7 @@ function buildEdges(
   const seen = new Set<string>();
 
   function add(src: string, tgt: string, label: string, fromFn?: string, toFn?: string) {
-    const k = `${src}→${tgt}`;
+    const k = `${src}â+'${tgt}`;
     if (seen.has(k) || src === tgt) return;
     seen.add(k);
     edges.push({ id: `e${edges.length + 1}`, source: src, target: tgt, label, functionLink: fromFn && toFn ? { fromFn, toFn } : undefined });
@@ -378,7 +378,7 @@ function buildEdges(
     for (const m of (byType.model ?? []).slice(0, 2)) add(s.id, m.id, "reads/writes");
   }
 
-  // CSS/style → component edges: link ComponentName.css → ComponentName.tsx/jsx
+  // CSS/style â+' component edges: link ComponentName.css â+' ComponentName.tsx/jsx
   for (const styleNode of byType.style ?? []) {
     const cssBase = styleNode.file
       .split("/").pop()
@@ -418,7 +418,7 @@ function buildEdges(
         const fromFn = findCallerFn(content, stmt.namedImports[0]) ?? node.functions[0];
         add(node.id, target.id, "imports", fromFn, toFn);
       } else {
-        // Default import — use first functions from each side
+        // Default import -- use first functions from each side
         add(node.id, target.id, "imports", node.functions[0], target.functions[0]);
       }
     }
@@ -427,9 +427,9 @@ function buildEdges(
   return edges.slice(0, 60);
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // Learning path + flow
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 function buildLearningPath(nodes: GraphNode[], framework: string): LearningStep[] {
   const order: NodeType[] = [
     "entry",
@@ -474,7 +474,7 @@ function buildLearningPath(nodes: GraphNode[], framework: string): LearningStep[
       duration: `${3 + group.length * 2} min`,
       description: `Explore: ${group.map((n) => n.label).join(", ")}.`,
       relatedNodes: group.map((n) => n.id),
-      status: num === 2 ? "current" : "locked",
+      status: "current",
     });
     num++;
   }
@@ -482,64 +482,385 @@ function buildLearningPath(nodes: GraphNode[], framework: string): LearningStep[
   return steps.slice(0, 10);
 }
 
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
+// FlowViz enrichment helpers
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
+
+function detectLanguageForFile(file: string): string {
+  const ext = file.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "py") return "python";
+  if (ext === "ts" || ext === "tsx") return "typescript";
+  if (ext === "js" || ext === "jsx") return "javascript";
+  if (ext === "rb") return "ruby";
+  if (ext === "go") return "go";
+  if (ext === "java") return "java";
+  if (ext === "rs") return "rust";
+  return "javascript";
+}
+
+function detectEdgeType(fromType: NodeType, toType: NodeType): string {
+  if (toType === "model") return "DB_QUERY";
+  if (fromType === "entry" || fromType === "page") return "HTTP_CALL";
+  if (toType === "service") return "FUNCTION_CALL";
+  if (fromType === "controller") return "FUNCTION_CALL";
+  return "FUNCTION_CALL";
+}
+
+function extractHttpRoutes(content: string): string[] {
+  const routes: string[] = [];
+  // Express / FastAPI / Flask route patterns
+  for (const m of content.matchAll(/@(?:app|router)\.(?:get|post|put|delete|patch)\(['"]([^'"]+)['"]/gi))
+    routes.push(m[1]);
+  for (const m of content.matchAll(/router\.(?:get|post|put|delete|patch)\(['"]([^'"]+)['"]/gi))
+    routes.push(m[1]);
+  for (const m of content.matchAll(/path\(['"]([^'"]+)['"],/gi))
+    routes.push(m[1]);
+  return [...new Set(routes)].slice(0, 5);
+}
+
+function detectDbOps(content: string): string[] {
+  const ops: string[] = [];
+  if (/\b(SELECT|\.find|\.findOne|\.get|queryset\.filter)\b/i.test(content)) ops.push("SELECT");
+  if (/\b(INSERT|\.create|\.save|\.add)\b/i.test(content)) ops.push("INSERT");
+  if (/\b(UPDATE|\.update|\.save\(\))\b/i.test(content)) ops.push("UPDATE");
+  if (/\b(DELETE|\.delete|\.destroy)\b/i.test(content)) ops.push("DELETE");
+  return ops;
+}
+
+function detectSecurityFlags(content: string, nodeType: NodeType): string[] {
+  const flags: string[] = [];
+  if (/console\.(log|debug|info)\s*\(.*pass(word)?/i.test(content))
+    flags.push("Password may be logged to console -- risk in production");
+  if (/console\.(log|debug|info)\s*\(.*token/i.test(content))
+    flags.push("Auth token may be logged to console");
+  if (/print\s*\(.*pass(word)?/i.test(content))
+    flags.push("Password may be printed to stdout -- remove before deploying");
+  if (/\+\s*req\.(body|query|params)|string_concat.*request/i.test(content))
+    flags.push("Possible SQL injection -- use parameterized queries");
+  if (/eval\s*\(/i.test(content))
+    flags.push("eval() usage detected -- code injection risk");
+  if (nodeType === "controller" && !/validate|sanitize|zod|joi|pydantic|serializer/i.test(content))
+    flags.push("No input validation detected -- validate all user inputs");
+  if (/http:\/\//i.test(content) && !/localhost|127\.0\.0\.1/i.test(content))
+    flags.push("Plain HTTP URL detected -- use HTTPS in production");
+  if (/SECRET_KEY\s*=\s*['"][^'"]{1,20}['"]/i.test(content))
+    flags.push("Hardcoded secret key detected -- move to environment variable");
+  if (/password\s*=\s*['"][^'"]+['"]/i.test(content))
+    flags.push("Hardcoded password in source code -- use environment variables");
+  return flags.slice(0, 3);
+}
+
+function isSarthiAlert(content: string, nodeType: NodeType, framework: string): { alert: boolean; reason: string } {
+  // Use simple string/regex checks compatible with ES2017 target (no /s flag)
+  if (/\basync\b/.test(content) && /\bawait\b/.test(content))
+    return { alert: true, reason: "Uses async/await - a common source of confusion for beginners around timing and error handling" };
+  if (/jwt\.sign|jwt\.verify|jsonwebtoken/i.test(content))
+    return { alert: true, reason: "JWT token handling is tricky - understanding what a token is and why it expires confuses many students" };
+  if (/bcrypt|argon2|hashPassword|pbkdf2/i.test(content))
+    return { alert: true, reason: "Password hashing is conceptually hard - students often confuse hashing with encryption" };
+  if (/middleware/i.test(content))
+    return { alert: true, reason: "Middleware chains are abstract - students struggle to visualise when and why functions run" };
+  if (/Promise\.all|Promise\.race|Promise\.allSettled/i.test(content))
+    return { alert: true, reason: "Parallel async operations with Promise combinators are an advanced concept" };
+  if (/useEffect|useCallback|useMemo/i.test(content))
+    return { alert: true, reason: "React hooks with dependency arrays are a known confusion point for new React learners" };
+  if (/dependency injection|@inject|@Injectable/i.test(content))
+    return { alert: true, reason: "Dependency injection is an advanced design pattern not taught in most college curricula" };
+  if (/\.pipe\(|rxjs|Observable/i.test(content))
+    return { alert: true, reason: "Reactive streams (RxJS/Observables) are significantly harder than standard promise-based async code" };
+  if (/decorator|@Controller|@Module/i.test(content))
+    return { alert: true, reason: "Decorators and annotation-based frameworks (NestJS, Spring) require understanding metadata and IoC containers" };
+  if (/closure|\.bind\(this\)|self\s*=\s*this/i.test(content))
+    return { alert: true, reason: "Closures and 'this' binding are classic JavaScript confusion points" };
+  if (nodeType === "model" && /ORM|sequelize|prisma|mongoose|sqlalchemy/i.test(content + framework))
+    return { alert: true, reason: "ORM abstractions hide raw SQL - students benefit from understanding what query the ORM is actually running" };
+  return { alert: false, reason: "" };
+}
+
+function buildAnalogy(nodeType: NodeType, framework: string, fnName: string): string {
+  const analogies: Partial<Record<NodeType, string[]>> = {
+    entry: [
+      "Think of this like the main gate of a college campus -- every student (request) enters from here before going anywhere else.",
+      "Like the front door of an Aadhaar enrollment centre -- it's the first place everyone has to pass through.",
+    ],
+    config: [
+      "Like the office noticeboard where passwords for the WiFi, canteen timings, and admin contacts are pinned -- the app reads these settings before starting.",
+      "Think of it like the settings page of a UPI app -- it holds the bank details told to the app, not shown to you.",
+    ],
+    page: [
+      "Like the receptionist at a hospital -- they listen to your request (the URL) and direct you to the right department (controller).",
+      "Like the menu at a dhaba -- it maps what you ask for to who will make it for you.",
+    ],
+    controller: [
+      "Like the security guard at your college gate -- receives your ID (request), checks if you're allowed in, then gives you a visitor pass (response).",
+      "Like a bank teller -- they take your slip (request), talk to the backend systems, and hand you cash (response).",
+    ],
+    service: [
+      "Like the back-office staff at a bank -- they don't talk to customers directly but do all the real work: checking balances, applying rules, moving money.",
+      "Like a restaurant kitchen -- the waiter (controller) takes your order, the kitchen (service) does the actual cooking.",
+    ],
+    model: [
+      "Like the filing cabinet in a government office -- every citizen's data is stored in a consistent, structured folder. The model defines what each folder looks like.",
+      "Think of Aadhaar's database schema -- name, DOB, address, biometrics -- the model defines exactly what fields each record must have.",
+    ],
+    utility: [
+      "Like the photocopy shop near campus -- it doesn't run the college but every department calls on it when they need something copied, stamped, or formatted.",
+      "Like a Swiss army knife -- small, shared tools that every part of the app picks up when needed.",
+    ],
+  };
+  const list = analogies[nodeType] ?? ["Like a specific department in a large organisation -- it has one job and does it well, letting other parts focus on theirs."];
+  return list[Math.floor(fnName.length % list.length)];
+}
+
+function buildNarrations(
+  step: number,
+  total: number,
+  nodeLabel: string,
+  _nodeType: NodeType,
+  description: string,
+  _analogy: string
+): Record<string, string> {
+  const base = `Step ${step} of ${total} -- ${nodeLabel}. ${description}`;
+  return { en: base, hi: base, ta: base, te: base };
+}
+
+function buildDataShapes(
+  node: GraphNode,
+  prevNode: GraphNode | null,
+  content: string
+): { receives: Record<string, string>; sends: Record<string, string> } {
+  const receives: Record<string, string> = {};
+  const sends: Record<string, string> = {};
+
+  // Extract function parameters from the primary function
+  const fnName = node.functions[0]?.replace("()", "") ?? "";
+  const paramRe = new RegExp(`(?:def|function)\\s+${fnName}\\s*\\(([^)]*)\\)`);
+  const paramMatch = content.match(paramRe);
+  if (paramMatch) {
+    const rawParams = paramMatch[1];
+    rawParams.split(",").forEach((p) => {
+      const name = p.trim().split(/[\s:=]/)[0].replace(/[^a-zA-Z_]/g, "");
+      if (name && name !== "self" && name !== "cls" && name !== "request" && name !== "req" && name !== "res") {
+        receives[name] = inferType(name);
+      }
+    });
+  }
+
+  // Common HTTP request shapes
+  if (node.type === "controller" || node.type === "page") {
+    if (!Object.keys(receives).length) {
+      if (/login|auth|signin/i.test(node.file)) { receives["email"] = "string"; receives["password"] = "string (hashed)"; }
+      else if (/register|signup/i.test(node.file)) { receives["email"] = "string"; receives["password"] = "string"; receives["name"] = "string"; }
+      else if (/user/i.test(node.file)) { receives["userId"] = "string | number"; }
+      else { receives["body"] = "JSON payload"; }
+    }
+    if (node.type === "controller") { sends["status"] = "200 | 400 | 401 | 500"; sends["data"] = "JSON response"; }
+  }
+
+  if (node.type === "service") {
+    if (!Object.keys(receives).length) receives["params"] = "object";
+    sends["result"] = "Promise<data>";
+  }
+
+  if (node.type === "model") {
+    const dbOps = detectDbOps(content);
+    if (dbOps.includes("SELECT")) { sends["rows"] = "Array<Record>"; }
+    else if (dbOps.includes("INSERT")) { receives["data"] = "Record"; sends["id"] = "number | string"; }
+    else { sends["result"] = "QueryResult"; }
+  }
+
+  if (prevNode?.type === "entry" && node.type === "page") {
+    receives["method"] = "GET | POST | PUT | DELETE";
+    receives["path"] = "string";
+  }
+
+  return { receives, sends };
+}
+
+function inferType(paramName: string): string {
+  if (/id$/i.test(paramName)) return "number | string";
+  if (/email/i.test(paramName)) return "string";
+  if (/pass(word)?/i.test(paramName)) return "string (hashed)";
+  if (/token|jwt/i.test(paramName)) return "string (JWT)";
+  if (/count|limit|offset|page/i.test(paramName)) return "number";
+  if (/flag|is[A-Z]|has[A-Z]/i.test(paramName)) return "boolean";
+  if (/list|array|items/i.test(paramName)) return "Array<any>";
+  if (/data|body|payload/i.test(paramName)) return "object";
+  return "string";
+}
+
+function buildFlowDescription(nodeType: NodeType, nodeLabel: string, framework: string, fnName: string, dbOps: string[], routes: string[]): string {
+  const routePart = routes.length ? ` It handles routes: ${routes.slice(0, 2).join(", ")}.` : "";
+  const dbPart = dbOps.length ? ` It performs ${dbOps.join(", ")} operations on the database.` : "";
+  const typeDescs: Partial<Record<NodeType, string>> = {
+    entry: `This is where the ${framework} application starts. When someone runs the server, execution begins here. It loads configuration, registers middleware, and hands control to the routing layer.`,
+    config: `This module manages all environment-level settings -- database connection strings, secret keys, and runtime flags. The app reads these values before processing any requests.`,
+    page: `This is the routing layer.${routePart} It listens for incoming HTTP requests and maps each URL pattern to the right handler function -- like a receptionist routing customers to the correct department.`,
+    controller: `This controller receives the HTTP request, validates the data, and decides what to do next.${dbPart} It acts as the bridge between what the user asked for and the service layer that does the real work.`,
+    service: `This service layer contains the application's core business logic.${dbPart} It is deliberately separate from HTTP concerns -- it doesn't know or care that a web request triggered it.`,
+    model: `This defines the database entity -- the exact shape of a record in the database.${dbPart} Every field, its type, and its constraints are declared here using the ORM.`,
+    utility: `This utility module provides shared helper functions used across the application. It avoids code duplication by centralizing common operations.`,
+  };
+  return typeDescs[nodeType] ?? `This ${nodeType} module (${nodeLabel}) performs its dedicated role in the ${framework} application's processing pipeline.`;
+}
+
 function generateFlow(
   nodes: GraphNode[],
+  contentMap: Record<string, string>,
   repoName: string,
   framework: string
 ): ExecutionFlow[] {
-  const pick = (t: NodeType) => nodes.find((n) => n.type === t);
-  const seq: NodeType[] = ["entry", "page", "controller", "service", "model"];
-  const selected = seq.map(pick).filter(Boolean) as GraphNode[];
-  if (selected.length < 2) return [];
+  // Build multiple meaningful flows based on what node types exist
+  const byType: Partial<Record<NodeType, GraphNode[]>> = {};
+  for (const n of nodes) (byType[n.type] = byType[n.type] ?? []).push(n);
 
-  const steps: FlowStep[] = selected.map((n, i) => ({
-    id: `fs${i + 1}`,
-    step: i + 1,
-    title: n.label,
-    nodeId: n.id,
-    description: n.description,
-    functionName: n.functions[0] ?? "process()",
-    language: n.file.endsWith(".py")
-      ? "python"
-      : n.file.endsWith(".ts") || n.file.endsWith(".tsx")
-      ? "typescript"
-      : "javascript",
-    codeSnippet: n.codePreview.split("\n").slice(0, 14).join("\n"),
-  }));
+  const flows: ExecutionFlow[] = [];
 
-  return [
-    {
-      id: "request-flow",
-      title: "Request Flow Through Codebase",
-      description: `Trace how a request flows through the ${repoName} (${framework}) codebase from entry to data layer.`,
-      icon: "🔄",
-      steps,
-    },
-  ];
+  // â"EURâ"EUR Flow builder utility â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
+  function buildFlow(
+    id: string,
+    title: string,
+    description: string,
+    icon: string,
+    sequence: NodeType[]
+  ): ExecutionFlow | null {
+    const selected: GraphNode[] = [];
+    for (const t of sequence) {
+      const hit = byType[t]?.[0];
+      if (hit) selected.push(hit);
+    }
+    // need at least 2 meaningful nodes
+    if (selected.length < 2) return null;
+
+    const steps: FlowStep[] = selected.map((n, i) => {
+      const content = contentMap[n.file] ?? "";
+      const prev = selected[i - 1] ?? null;
+      const next = selected[i + 1] ?? null;
+      const fnName = n.functions[0] ?? "handle()";
+      const dbOps = detectDbOps(content);
+      const routes = extractHttpRoutes(content);
+      const secFlags = detectSecurityFlags(content, n.type);
+      const { alert, reason } = isSarthiAlert(content, n.type, framework);
+      const analogy = buildAnalogy(n.type, framework, fnName);
+      const desc = buildFlowDescription(n.type, n.label, framework, fnName, dbOps, routes);
+      const { receives, sends } = buildDataShapes(n, prev, content);
+      const edgeType = next ? detectEdgeType(n.type, next.type) : "RETURN";
+      const narrations = buildNarrations(i + 1, selected.length, n.label, n.type, desc, analogy);
+
+      return {
+        id: `${id}-s${i + 1}`,
+        step: i + 1,
+        title: n.label,
+        nodeId: n.id,
+        functionName: fnName,
+        language: detectLanguageForFile(n.file),
+        codeSnippet: content.split("\n").slice(0, 18).join("\n") || `# ${n.label}\n# Content unavailable`,
+        description: desc,
+        analogy,
+        sarthiAlert: alert,
+        sarthiAlertReason: reason,
+        securityFlags: secFlags,
+        receives,
+        sends,
+        edgeType,
+        narration: narrations,
+      };
+    });
+
+    return { id, title, description, icon, steps };
+  }
+
+  // â"EURâ"EUR Flow 1: Primary request flow â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
+  const primary = buildFlow(
+    "request-flow",
+    "Request Flow Through Codebase",
+    `Trace how a request travels through the ${repoName} (${framework}) codebase from entry point to data layer and back.`,
+      "🔄",
+      ["entry", "page", "controller", "service", "model"]
+  );
+  if (primary) flows.push(primary);
+
+  // â"EURâ"EUR Flow 2: Auth flow (if auth-related files exist) â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
+  const authNode = nodes.find((n) =>
+    /auth|login|jwt|token|session/i.test(n.file) &&
+    ["controller", "service", "utility"].includes(n.type)
+  );
+  if (authNode) {
+    const authFlow = buildFlow(
+      "auth-flow",
+      "Authentication Flow",
+      `How user authentication works in ${repoName} -- from login request to token issuance.`,
+      "🔐",
+      ["page", "controller", "service", "model"]
+    );
+    if (authFlow) {
+      // Splice in the auth node at the right position
+      const ctrlIdx = authFlow.steps.findIndex((s) => nodes.find((n) => n.id === s.nodeId)?.type === "controller");
+      if (ctrlIdx !== -1) {
+        authFlow.steps[ctrlIdx] = {
+          ...authFlow.steps[ctrlIdx],
+          nodeId: authNode.id,
+          title: authNode.label,
+          functionName: authNode.functions[0] ?? "authenticate()",
+          description: buildFlowDescription(authNode.type, authNode.label, framework, authNode.functions[0] ?? "authenticate()", [], []),
+        };
+      }
+      flows.push(authFlow);
+    }
+  }
+
+  // â"EURâ"EUR Flow 3: Data / CRUD flow â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
+  const hasModel = (byType.model?.length ?? 0) > 0;
+  const hasService = (byType.service?.length ?? 0) > 0;
+  if (hasModel && hasService) {
+    const crudFlow = buildFlow(
+      "crud-flow",
+      "Data Access Flow",
+      `How ${repoName} reads and writes data -- from controller through service to the database model.`,
+      "🗄️",
+      ["controller", "service", "model"]
+    );
+    if (crudFlow) flows.push(crudFlow);
+  }
+
+  // â"EURâ"EUR Flow 4: Config + Bootstrap â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
+  const hasConfig = (byType.config?.length ?? 0) > 0;
+  if (hasConfig) {
+    const bootFlow = buildFlow(
+      "boot-flow",
+      "Application Bootstrap",
+      `How ${repoName} initialises -- loading config, connecting to DB, and registering routes before handling its first request.`,
+      "⚡",
+      ["entry", "config", "page", "controller"]
+    );
+    if (bootFlow) flows.push(bootFlow);
+  }
+
+  return flows;
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // Node description generator
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 function describe(path: string, type: NodeType, content: string, fw: string): string {
   const lines = content.split("\n").filter((l) => l.trim()).length;
   const desc: Partial<Record<NodeType, string>> = {
-    entry: `Entry point of the ${fw} application — controls app startup and bootstrapping.`,
-    config: `Configuration module — manages environment variables, database URLs, and runtime settings.`,
-    page: `Routing layer — maps HTTP paths to handler functions and defines the API surface.`,
-    component: `UI component — renders a part of the interface and manages its local state.`,
-    controller: `Controller/View — receives HTTP requests, validates input, and orchestrates responses.`,
-    service: `Service layer — encapsulates business logic separate from HTTP and database concerns.`,
-    model: `Data model — defines database entity shape, fields, relationships, and ORM behaviour.`,
-    utility: `Utility/helper module — shared functions, middleware, or cross-cutting application logic.`,
+    entry: `Entry point of the ${fw} application -- controls app startup and bootstrapping.`,
+    config: `Configuration module -- manages environment variables, database URLs, and runtime settings.`,
+    page: `Routing layer -- maps HTTP paths to handler functions and defines the API surface.`,
+    component: `UI component -- renders a part of the interface and manages its local state.`,
+    controller: `Controller/View -- receives HTTP requests, validates input, and orchestrates responses.`,
+    service: `Service layer -- encapsulates business logic separate from HTTP and database concerns.`,
+    model: `Data model -- defines database entity shape, fields, relationships, and ORM behaviour.`,
+    utility: `Utility/helper module -- shared functions, middleware, or cross-cutting application logic.`,
     external: `External service or database integration point.`,
   };
   return `${desc[type] ?? `A ${type} module in the ${fw} codebase.`} (${lines} non-empty lines)`;
 }
 
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 // Route handler
-// ────────────────────────────────────────────────────────────
+// â"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EURâ"EUR
 export async function GET(req: NextRequest) {
   const repoUrl = req.nextUrl.searchParams.get("url");
   if (!repoUrl)
@@ -680,7 +1001,7 @@ export async function GET(req: NextRequest) {
     // 6. Build edges, learning path, flows
     const edges = buildEdges(nodes, contentMap);
     const learningPath = buildLearningPath(nodes, framework);
-    const flows = generateFlow(nodes, repo, framework);
+    const flows = generateFlow(nodes, contentMap, repo, framework);
 
     const repository: Repository = {
       id: `${owner}-${repo}`,
