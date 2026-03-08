@@ -11,6 +11,7 @@ interface NodeDetailProps {
   onClose: () => void;
   language: Language;
   projectId?: string;
+  repoContext?: string;
   edges?: GraphEdge[];
   allNodes?: GraphNode[];
   onExploreNode?: (node: GraphNode) => void;
@@ -23,7 +24,7 @@ const COMPLEXITY_COLORS = {
   high: { bg: "rgba(255,77,109,0.12)", text: "#FF4D6D", border: "rgba(255,77,109,0.3)" },
 };
 
-export default function NodeDetail({ node, onClose, language, projectId, edges = [], allNodes = [], onExploreNode, onHighlightPath }: NodeDetailProps) {
+export default function NodeDetail({ node, onClose, language, projectId, repoContext, edges = [], allNodes = [], onExploreNode, onHighlightPath }: NodeDetailProps) {
   const [tab, setTab] = useState<"overview" | "code" | "connections">("overview");
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -32,6 +33,10 @@ export default function NodeDetail({ node, onClose, language, projectId, edges =
     if (!node) return;
     setAiText("");
     setAiLoading(true);
+    // Build node-specific context: its own code preview + full repo context
+    const nodeContext = repoContext
+      ? `[${node.file}]\n${node.description}\nFunctions: ${node.functions.join(", ")}\n\n${node.codePreview}\n\n---\n\n${repoContext}`
+      : `[${node.file}]\n${node.description}\nFunctions: ${node.functions.join(", ")}\n\n${node.codePreview}`;
     fetch("/api/chatbot", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -39,13 +44,15 @@ export default function NodeDetail({ node, onClose, language, projectId, edges =
         msg: `Explain the file ${node.file} — what it does, its purpose, key exports or functions, and how it fits in the project.`,
         projectId: projectId ?? "",
         nodeMode: true,
+        language,
+        repoContext: nodeContext,
       }),
     })
       .then((r) => r.json())
       .then((d) => setAiText(typeof d?.output === "string" && d.output.trim() ? d.output : ""))
       .catch(() => setAiText(""))
       .finally(() => setAiLoading(false));
-  }, [node?.id, projectId]);
+  }, [node?.id, projectId, language]);
 
   // Compute outgoing and incoming connections for the connections tab
   const outgoing = node

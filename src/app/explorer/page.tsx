@@ -326,6 +326,13 @@ export default function ExplorerPage() {
                 onClose={() => { setSelectedNode(null); setExploredNode(null); setHighlightedNodes([]); }}
                 language={language}
                 projectId={repo.projectId}
+                repoContext={repo.nodes
+                  .slice(0, 25)
+                  .map(
+                    (n) =>
+                      `[${n.file}]\n${n.description}\nFunctions: ${n.functions.join(", ")}\n\n${n.codePreview.slice(0, 400)}`
+                  )
+                  .join("\n\n---\n\n")}
                 edges={repo.edges}
                 allNodes={repo.nodes}
                 onExploreNode={handleNodeExplore}
