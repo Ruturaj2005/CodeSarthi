@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Bot, User, Loader2, Globe2, ChevronDown } from "lucide-react";
-import { CHAT_MESSAGES_EN, CHAT_MESSAGES_HI } from "@/lib/mockData";
+import { repoStore } from "@/lib/repoStore";
 import { LANGUAGE_LABELS } from "@/lib/types";
 import type { Language } from "@/lib/types";
 
@@ -62,15 +62,43 @@ export default function SarthiChat({ language, onLanguageChange }: SarthiChatPro
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
-    // Simulate AI response with mock data
-    await new Promise((r) => setTimeout(r, 1200));
+    try {
+      // Build concise repo context for Bedrock
+      const repo = repoStore.load();
+      const repoContext = repo
+        ? `Repo: ${repo.name} (${repo.framework}, ${repo.language}). Key files: ${repo.nodes
+            .slice(0, 8)
+            .map((n) => n.file)
+            .join(", ")}.`
+        : undefined;
 
-    const isHindi = language === "hi" || msg.toLowerCase().includes("kaise") || msg.toLowerCase().includes("kya");
-    const mockMessages = isHindi ? CHAT_MESSAGES_HI : CHAT_MESSAGES_EN;
-    const response = mockMessages[1]?.content ?? "I found the relevant files in the repository. Let me explain...";
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: msg,
+          language,
+          repoContext,
+          // Send last 8 turns so Bedrock has conversation history
+          history: messages.slice(-8),
+        }),
+      });
 
-    setMessages((prev) => [...prev, { role: "assistant", content: response }]);
-    setLoading(false);
+      const data = await res.json();
+      const reply: string = data.reply ?? "I could not get a response. Please try again.";
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Network error reaching Amazon Bedrock. Check your AWS credentials in .env.local.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

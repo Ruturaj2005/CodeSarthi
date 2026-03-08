@@ -1,0 +1,29 @@
+# ─────────────────────────────────────────────────────────────
+# AWS Amplify build specification for CodeSarthi (Next.js SSR)
+#
+# Deploy steps:
+#   1. Connect this repo in AWS Amplify Console
+#   2. Add environment variables (AWS_REGION, BEDROCK_MODEL_ID, etc.)
+#   3. Push to main — Amplify auto-builds and deploys
+# ─────────────────────────────────────────────────────────────
+version: 1
+
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build
+
+  artifacts:
+    # Amplify reads Next.js output from .next/
+    baseDirectory: .next
+    files:
+      - "**/*"
+
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*

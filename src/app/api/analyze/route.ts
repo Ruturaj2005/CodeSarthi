@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { s3Client, S3_BUCKET } from "@/lib/aws";
 import type {
   Repository,
   GraphNode,
@@ -878,6 +880,51 @@ export async function GET(req: NextRequest) {
   const repo = rawRepo.replace(/\.git$/, "");
   const headers = getHeaders();
 
+  // ── AWS Lambda proxy (via Amazon API Gateway) ─────────────────────────────────
+  // If LAMBDA_ANALYZE_URL is set, delegate the heavy analysis to a Lambda
+  // function running this same code in a serverless environment on AWS.
+  if (process.env.LAMBDA_ANALYZE_URL) {
+    try {
+      const lambdaRes = await fetch(
+        `${process.env.LAMBDA_ANALYZE_URL}?url=${encodeURIComponent(repoUrl)}`,
+        {
+          headers: {
+            ...(process.env.API_GATEWAY_KEY
+              ? { "x-api-key": process.env.API_GATEWAY_KEY }
+              : {}),
+          },
+        }
+      );
+      if (lambdaRes.ok) {
+        return NextResponse.json(await lambdaRes.json());
+      }
+    } catch {
+      // Lambda unavailable — fall through to local processing
+    }
+  }
+
+  // ── Amazon S3 cache check ──────────────────────────────────────────────
+  // Serve cached analysis from S3 if it is less than 24 hours old.
+  const cacheKey = `analyses/${owner}/${repo}.json`;
+  if (process.env.S3_BUCKET) {
+    try {
+      const s3Resp = await s3Client.send(
+        new GetObjectCommand({ Bucket: S3_BUCKET, Key: cacheKey })
+      );
+      const cachedStr = await s3Resp.Body?.transformToString();
+      if (cachedStr) {
+        const cached = JSON.parse(cachedStr);
+        const ageMs = Date.now() - new Date(cached._cachedAt ?? 0).getTime();
+        if (ageMs < 86_400_000) {
+          // Cache hit (< 24 h) — return immediately
+          return NextResponse.json(cached);
+        }
+      }
+    } catch {
+      // Cache miss, access denied, or S3 not yet configured — continue
+    }
+  }
+
   try {
     // 1. Repo metadata
     const infoRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}`, { headers });
@@ -1024,6 +1071,25 @@ export async function GET(req: NextRequest) {
       flows,
       learningPath,
     };
+
+    // ── Write analysis to Amazon S3 (cache for 24 h) ────────────────────────
+    if (process.env.S3_BUCKET) {
+      try {
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: cacheKey,
+            Body: JSON.stringify({
+              ...repository,
+              _cachedAt: new Date().toISOString(),
+            }),
+            ContentType: "application/json",
+          })
+        );
+      } catch {
+        // Non-critical: S3 write failure doesn’t block the API response
+      }
+    }
 
     return NextResponse.json(repository);
   } catch (err) {

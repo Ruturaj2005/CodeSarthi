@@ -18,11 +18,11 @@ import { sleep } from "@/lib/utils";
 import { repoStore } from "@/lib/repoStore";
 
 const PROGRESS_STEPS = [
-  { id: 1, label: "Connecting to GitHub", detail: "Fetching repository info..." },
-  { id: 2, label: "Reading file structure", detail: "Scanning source files..." },
-  { id: 3, label: "Analysing code", detail: "Categorising modules..." },
-  { id: 4, label: "Building architecture graph", detail: "Mapping dependencies..." },
-  { id: 5, label: "Generating learning path", detail: "Creating personalised guide..." },
+  { id: 1, label: "Connecting to GitHub", detail: "Fetching repository metadata..." },
+  { id: 2, label: "Checking Amazon S3 cache", detail: "Looking up previous analysis..." },
+  { id: 3, label: "Analysing via AWS Lambda", detail: "Running AI-powered code categorisation..." },
+  { id: 4, label: "Building architecture graph", detail: "Mapping module dependencies..." },
+  { id: 5, label: "Saving to Amazon DynamoDB", detail: "Persisting analysis to the cloud..." },
 ];
 
 const SAMPLE_REPOS = [
