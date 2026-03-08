@@ -35,9 +35,9 @@ echo "==> [5/8] Cloning repository..."
 mkdir -p "$APP_DIR"
 git clone --branch "$DEPLOY_BRANCH" "$REPO_URL" "$APP_DIR"
 
-echo "==> [6/8] Installing app dependencies..."
+echo "==> [6/8] Installing app dependencies (including devDeps needed for build)..."
 cd "$APP_DIR"
-npm ci --omit=dev
+npm ci
 
 echo ""
 echo "========================================================"

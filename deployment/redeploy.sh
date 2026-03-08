@@ -18,8 +18,8 @@ cd "$APP_DIR"
 git fetch origin
 git reset --hard "origin/${DEPLOY_BRANCH}"
 
-echo "==> Installing / updating dependencies..."
-npm ci --omit=dev
+echo "==> Installing / updating dependencies (including devDeps needed to build)..."
+npm ci
 
 echo "==> Building Next.js app..."
 npm run build
