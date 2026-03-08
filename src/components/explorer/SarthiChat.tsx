@@ -166,6 +166,17 @@ export default function SarthiChat({ language, onLanguageChange, projectId, init
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
+    // For follow-up messages, prepend the recent conversation to repoContext
+    // so the model always has it in the main context string (not just in history)
+    let effectiveContext = repoContext ?? "";
+    const prevMessages = messages.slice(-6); // last 3 turns
+    if (prevMessages.length >= 2) {
+      const convoSnippet = prevMessages
+        .map((m) => (m.role === "user" ? `User: ${m.content}` : `Assistant: ${m.content}`))
+        .join("\n");
+      effectiveContext = `[RECENT CONVERSATION — use this to answer follow-up questions]\n${convoSnippet}\n\n[CODEBASE FILES]\n${effectiveContext}`;
+    }
+
     try {
       const res = await fetch("/api/chatbot", {
         method: "POST",
@@ -175,7 +186,7 @@ export default function SarthiChat({ language, onLanguageChange, projectId, init
           projectId: projectId ?? "",
           sessionId: sessionIdRef.current,
           language,
-          repoContext: repoContext ?? "",
+          repoContext: effectiveContext,
           clientHistory: messages.slice(-10).map((m) => ({
             role: m.role,
             content: m.content,
