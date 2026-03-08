@@ -126,13 +126,23 @@ export default function ImportCard() {
       }
       setCurrentStep(numSteps - 1);
       const res = await fetchPromise;
-      const data = await res.json();
-      if (!res.ok) {
+      let data: Record<string, unknown> = {};
+      let rawText = "";
+      try {
+        rawText = await res.text();
+        data = JSON.parse(rawText);
+      } catch {
+        // server returned non-JSON (e.g. Amplify 504 HTML page)
         setStage("input");
-        setError(data.error ?? "Analysis failed. Please try again.");
+        setError(`Server returned non-JSON (status ${res.status}): ${rawText.slice(0, 200)}`);
         return;
       }
-      repoStore.save(data);
+      if (!res.ok) {
+        setStage("input");
+        setError((data.error as string) ?? `HTTP ${res.status}: Analysis failed.`);
+        return;
+      }
+      repoStore.save(data.repo as any);
       for (let p = 75; p <= 100; p += 2) {
         setProgress(p);
         await sleep(20);
@@ -144,10 +154,11 @@ export default function ImportCard() {
       abort();
       setStage("input");
       const isAbort = err instanceof Error && err.name === "AbortError";
+      const msg = err instanceof Error ? err.message : String(err);
       setError(
         isAbort
           ? "Analysis timed out \u2014 the repository may be too large. Try a smaller repo or upload a ZIP."
-          : "Could not reach the server. Check your connection and try again."
+          : `Server error: ${msg}`
       );
     }
   };
