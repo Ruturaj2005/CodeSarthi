@@ -79,6 +79,7 @@ export interface LearningStep {
 export interface Repository {
   id: string;
   url: string;
+  projectId?: string;
   name: string;
   description: string;
   language: string;

@@ -9,16 +9,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { bedrockClient, BEDROCK_MODEL_ID } from "@/lib/aws";
+import { getDb } from "@/lib/db";
 
 interface ChatRequestBody {
-  message: string;
+  // Bedrock AI mode
+  message?: string;
   repoContext?: string;
   language?: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  // Chat history save mode (from SarthiChat n8n flow)
+  sessionId?: string;
+  projectId?: string;
+  userMessage?: string;
+  assistantMessage?: string;
+  node?: string | null;
 }
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as ChatRequestBody;
+
+  // ── History-save mode (called from SarthiChat after n8n response) ──────────
+  if (body.sessionId && body.userMessage && body.assistantMessage) {
+    try {
+      const db = await getDb();
+      await db.collection("chatHistory").insertOne({
+        sessionId: body.sessionId,
+        projectId: body.projectId ?? null,
+        userMessage: body.userMessage,
+        assistantMessage: body.assistantMessage,
+        node: body.node ?? null,
+        timestamp: new Date(),
+      });
+      return NextResponse.json({ ok: true });
+    } catch (err) {
+      console.error("[chat] MongoDB save error:", err);
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+  }
+
+  // ── Bedrock AI mode ────────────────────────────────────────────────────────
   const { message, repoContext, language = "en", history = [] } = body;
 
   if (!message?.trim()) {
@@ -75,6 +104,18 @@ export async function POST(req: NextRequest) {
     const reply: string =
       result.content?.[0]?.text ??
       "I couldn't generate a response. Please try again.";
+
+    // Save to MongoDB (non-blocking)
+    getDb().then((db) =>
+      db.collection("chatHistory").insertOne({
+        sessionId: null,
+        projectId: null,
+        userMessage: message,
+        assistantMessage: reply,
+        node: null,
+        timestamp: new Date(),
+      })
+    ).catch(() => {});
 
     return NextResponse.json({ reply });
   } catch (err: unknown) {
