@@ -83,8 +83,8 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
       const ys = nodes.map((n) => positions[n.id]?.y ?? n.y);
       const minX = Math.min(...xs);
       const minY = Math.min(...ys);
-      const maxX = Math.max(...xs) + NODE_W;
-      const maxY = Math.max(...ys) + NODE_H;
+      const maxX = Math.max(...xs) + 160;
+      const maxY = Math.max(...ys) + 60;
       const pad = 60;
       const z = Math.min(1, Math.max(0.25, Math.min(
         (W - pad * 2) / (maxX - minX),
