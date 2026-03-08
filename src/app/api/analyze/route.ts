@@ -1025,6 +1025,7 @@ export async function POST(req: NextRequest) {
   if (!allFiles.length)
     return NextResponse.json({ error: "No files found in ZIP." }, { status: 422 });
 
+  try {
   const framework = detectFramework(allFiles);
   const language = detectLanguage(allFiles);
 
@@ -1226,4 +1227,11 @@ export async function POST(req: NextRequest) {
   })();
 
   return NextResponse.json({ ...repository, projectId });
+  } catch (err) {
+    console.error("[analyze-zip]", err);
+    return NextResponse.json(
+      { error: "ZIP analysis failed. Please try again or use a smaller project." },
+      { status: 500 }
+    );
+  }
 }
