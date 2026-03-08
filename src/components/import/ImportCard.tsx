@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, DragEvent } from "react";
+import { useState, useRef, useEffect, DragEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -13,6 +13,8 @@ import {
   AlertCircle,
   Zap,
   Lock,
+  Clock,
+  ExternalLink,
 } from "lucide-react";
 import { sleep } from "@/lib/utils";
 import { repoStore } from "@/lib/repoStore";
@@ -22,7 +24,7 @@ const PROGRESS_STEPS = [
   { id: 2, label: "Checking Amazon S3 cache", detail: "Looking up previous analysis..." },
   { id: 3, label: "Analysing via AWS Lambda", detail: "Running AI-powered code categorisation..." },
   { id: 4, label: "Building architecture graph", detail: "Mapping module dependencies..." },
-  { id: 5, label: "Saving to Amazon DynamoDB", detail: "Persisting analysis to the cloud..." },
+  { id: 5, label: "Sending to AI pipeline", detail: "Triggering embeddings via n8n..." },
 ];
 
 const SAMPLE_REPOS = [
@@ -34,6 +36,16 @@ const SAMPLE_REPOS = [
 
 type Stage = "input" | "analyzing" | "done";
 
+interface RecentProject {
+  projectId: string;
+  name: string;
+  repoUrl: string;
+  language: string;
+  framework: string;
+  description?: string;
+  createdAt: string;
+}
+
 export default function ImportCard() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("input");
@@ -44,6 +56,31 @@ export default function ImportCard() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [loadingProject, setLoadingProject] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((r) => r.json())
+      .then((d) => { if (d.projects?.length) setRecentProjects(d.projects); })
+      .catch(() => {});
+  }, []);
+
+  const handleOpenProject = async (projectId: string) => {
+    setLoadingProject(projectId);
+    try {
+      const res = await fetch(`/api/repo?id=${encodeURIComponent(projectId)}`);
+      const data = await res.json();
+      if (data.repo) {
+        repoStore.save(data.repo);
+        router.push("/explorer");
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingProject(null);
+    }
+  };
 
   const validate = (val: string) => {
     if (!val.trim()) return "Please enter a GitHub repository URL.";
@@ -426,6 +463,79 @@ export default function ImportCard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Recent Projects */}
+      {stage === "input" && recentProjects.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mt-6"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-3.5 h-3.5" style={{ color: "#6E56CF" }} />
+            <span className="text-xs font-semibold" style={{ color: "#9090A0" }}>Recent Projects</span>
+          </div>
+          <div className="space-y-2">
+            {recentProjects.map((p) => {
+              const owner = (p.repoUrl.match(/github\.com\/([^/]+)\//) ?? [])[1] ?? "";
+              return (
+                <motion.div
+                  key={p.projectId}
+                  whileHover={{ scale: 1.01 }}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl"
+                  style={{
+                    background: "rgba(17,17,24,0.95)",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                  }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: "rgba(110,86,207,0.12)", border: "1px solid rgba(110,86,207,0.2)" }}
+                    >
+                      <Github className="w-4 h-4" style={{ color: "#6E56CF" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-xs font-mono" style={{ color: "#9090A0" }}>{owner}/</span>
+                        <span className="text-xs font-mono font-semibold truncate" style={{ color: "#E8E8F0" }}>{p.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                          style={{ background: "rgba(110,86,207,0.12)", color: "#A78BFA" }}
+                        >{p.language}</span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                          style={{ background: "rgba(0,210,160,0.08)", color: "#00D2A0" }}
+                        >{p.framework}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleOpenProject(p.projectId)}
+                    disabled={loadingProject === p.projectId}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-80 flex-shrink-0 ml-2"
+                    style={{
+                      background: "rgba(110,86,207,0.15)",
+                      border: "1px solid rgba(110,86,207,0.3)",
+                      color: "#A78BFA",
+                    }}
+                  >
+                    {loadingProject === p.projectId ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ExternalLink className="w-3 h-3" />
+                    )}
+                    Open
+                  </button>
+                </motion.div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

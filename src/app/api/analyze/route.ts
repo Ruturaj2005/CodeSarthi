@@ -714,9 +714,10 @@ export async function GET(req: NextRequest) {
       try {
         const db = await getDb();
         await db.collection("projects").insertOne({
-          _id: projectId as unknown as string,
+          _id: projectId as unknown as import("mongodb").ObjectId,
           projectId,
           repoUrl,
+          url: repoUrl,
           owner,
           repoName: repo,
           name: repository.name,

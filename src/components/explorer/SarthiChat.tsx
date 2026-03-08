@@ -21,7 +21,7 @@ interface SarthiChatProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
   projectId?: string;
-  onHighlightNode?: (nodeLabel: string) => void;
+  initialMessages?: Message[];
 }
 
 const SUGGESTIONS_EN = [
@@ -46,8 +46,8 @@ function renderMarkdown(text: string) {
     .replace(/\n/g, "<br/>");
 }
 
-export default function SarthiChat({ language, onLanguageChange, projectId, onHighlightNode }: SarthiChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function SarthiChat({ language, onLanguageChange, projectId, initialMessages }: SarthiChatProps) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -259,21 +259,7 @@ export default function SarthiChat({ language, onLanguageChange, projectId, onHi
                   msg.content
                 )}
               </div>
-              {/* Node highlight chip */}
-              {msg.role === "assistant" && msg.node && (
-                <button
-                  onClick={() => onHighlightNode?.(msg.node!)}
-                  className="self-start flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all hover:scale-105 active:scale-95"
-                  style={{
-                    background: "rgba(0,210,160,0.1)",
-                    border: "1px solid rgba(0,210,160,0.35)",
-                    color: "#00D2A0",
-                  }}
-                >
-                  <span>⬡</span>
-                  <span>Explore: {msg.node}</span>
-                </button>
-              )}
+
             </div>
           </motion.div>
         ))}

@@ -1,15 +1,39 @@
 /**
- * POST /api/chat
- *
- * Amazon Bedrock-powered AI chat endpoint for SarthiChat.
- * Calls Claude (via Bedrock) with repo context + conversation history.
- * Returns a plain-text reply in the user's selected language.
+ * POST /api/chat  — save chat exchange to MongoDB OR call Bedrock AI
+ * GET  /api/chat  — fetch chat history for a projectId
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { bedrockClient, BEDROCK_MODEL_ID } from "@/lib/aws";
 import { getDb } from "@/lib/db";
+
+// ── GET: load chat history for a project ────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const projectId = req.nextUrl.searchParams.get("projectId");
+  if (!projectId) {
+    return NextResponse.json({ messages: [] });
+  }
+  try {
+    const db = await getDb();
+    const docs = await db
+      .collection("chatHistory")
+      .find({ projectId })
+      .sort({ timestamp: 1 })
+      .toArray();
+
+    // Convert DB rows → flat [{role,content,node}] pairs
+    const messages: { role: "user" | "assistant"; content: string; node?: string | null }[] = [];
+    for (const doc of docs) {
+      messages.push({ role: "user", content: doc.userMessage });
+      messages.push({ role: "assistant", content: doc.assistantMessage, node: doc.node ?? null });
+    }
+    return NextResponse.json({ messages });
+  } catch (err) {
+    console.error("[chat GET]", err);
+    return NextResponse.json({ messages: [] });
+  }
+}
 
 interface ChatRequestBody {
   // Bedrock AI mode

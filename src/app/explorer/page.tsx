@@ -58,6 +58,7 @@ export default function ExplorerPage() {
   const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
   const [showHackathon, setShowHackathon] = useState(false);
   const [exploredNode, setExploredNode] = useState<string | null>(null);
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; node?: string | null }[]>([]);
 
   // Load real repo from localStorage, fall back to demo
   useEffect(() => {
@@ -68,6 +69,14 @@ export default function ExplorerPage() {
     // Set first available step as active
     const firstStep = r.learningPath.find((s) => s.status !== "completed") ?? r.learningPath[0];
     if (firstStep) setActiveStep(firstStep.id);
+
+    // Load previous chat history for this project
+    if (stored?.projectId) {
+      fetch(`/api/chat?projectId=${encodeURIComponent(stored.projectId)}`)
+        .then((res) => res.json())
+        .then((data) => { if (data.messages?.length) setChatHistory(data.messages); })
+        .catch(() => {});
+    }
   }, []);
 
   const handleNodeSelect = (node: GraphNode | null) => {
@@ -124,7 +133,7 @@ export default function ExplorerPage() {
           <div className="flex items-center gap-1.5">
             <Github className="w-3.5 h-3.5" style={{ color: "#6B6B80" }} />
             <span className="text-xs font-mono" style={{ color: "#9090A0" }}>
-              {(repo.url.match(/github\.com\/([^/]+)\//) ?? [])[1] ?? ""}/
+              {((repo.url ?? repo.repoUrl ?? "").match(/github\.com\/([^/]+)\//) ?? [])[1] ?? ""}/
             </span>
             <span className="text-xs font-mono font-semibold" style={{ color: "#E8E8F0" }}>
               {repo.name}
@@ -326,6 +335,7 @@ export default function ExplorerPage() {
                 language={language}
                 onLanguageChange={setLanguage}
                 projectId={repo.projectId}
+                initialMessages={chatHistory}
                 // onHighlightNode={(label) => {
                 //   const found = repo.nodes.find(
                 //     (n) => n.label.toLowerCase() === label.toLowerCase() || n.id.toLowerCase() === label.toLowerCase()
