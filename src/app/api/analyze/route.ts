@@ -1028,10 +1028,11 @@ export async function POST(req: NextRequest) {
 
   const repoName = file.name.replace(/\.zip$/i, "");
   const syntheticUrl = `zip://${file.name}`;
-  const positions = layoutNodes(selected.map((f) => ({ id: f.path, type: f.type })));
+  const positions = layoutNodes(selected.map((f) => ({ id: f.path, type: f.type, layer: layerOf(f.type), group: groupOf(f.path) })));
 
   const nodes: GraphNode[] = selected.map((f, idx) => {
     const content = contentMap[f.path] ?? "";
+    const loc = content.split("\n").length;
     return {
       id: `n${idx + 1}`,
       label: f.path.split("/").pop() ?? f.path,
@@ -1043,13 +1044,16 @@ export async function POST(req: NextRequest) {
       functions: parseFunctions(content, f.path),
       dependencies: parseImports(content, f.path).slice(0, 5),
       codePreview: content || "# File content unavailable",
-      linesOfCode: content.split("\n").length,
+      linesOfCode: loc,
       complexity:
-        content.split("\n").length < 60
+        loc < 60
           ? "low"
-          : content.split("\n").length < 200
+          : loc < 200
           ? "medium"
           : "high",
+      layer: layerOf(f.type),
+      group: groupOf(f.path),
+      importance: importanceOf(f.type, loc),
     };
   });
 
