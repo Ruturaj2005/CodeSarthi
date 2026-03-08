@@ -102,13 +102,17 @@ export default function ImportCard() {
   const runAnalysis = async (
     steps: typeof PROGRESS_STEPS,
     label: string,
-    fetchPromise: Promise<Response>
+    buildFetch: () => { promise: Promise<Response>; abort: () => void }
   ) => {
     setActiveSteps(steps);
     setAnalysisLabel(label);
     setStage("analyzing");
     setCurrentStep(0);
     setProgress(0);
+
+    // Start the real fetch immediately so it runs in parallel with the UI animation
+    const { promise: fetchPromise, abort } = buildFetch();
+
     try {
       const numSteps = steps.length;
       for (let i = 0; i < numSteps - 1; i++) {
@@ -136,9 +140,15 @@ export default function ImportCard() {
       setStage("done");
       await sleep(900);
       router.push("/explorer");
-    } catch {
+    } catch (err: unknown) {
+      abort();
       setStage("input");
-      setError("Network error. Check your connection and try again.");
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      setError(
+        isAbort
+          ? "Analysis timed out \u2014 the repository may be too large. Try a smaller repo or upload a ZIP."
+          : "Could not reach the server. Check your connection and try again."
+      );
     }
   };
 
@@ -147,7 +157,14 @@ export default function ImportCard() {
     const err = validate(target);
     if (err) { setError(err); return; }
     setError("");
-    await runAnalysis(PROGRESS_STEPS, target, fetch(`/api/analyze?url=${encodeURIComponent(target)}`));
+    await runAnalysis(PROGRESS_STEPS, target, () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 55_000);
+      const promise = fetch(`/api/analyze?url=${encodeURIComponent(target)}`, {
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+      return { promise, abort: () => controller.abort() };
+    });
   };
 
   const handleZipAnalyze = async () => {
@@ -155,7 +172,16 @@ export default function ImportCard() {
     setError("");
     const fd = new FormData();
     fd.append("zip", zipFile);
-    await runAnalysis(ZIP_PROGRESS_STEPS, zipFile.name, fetch("/api/analyze", { method: "POST", body: fd }));
+    await runAnalysis(ZIP_PROGRESS_STEPS, zipFile.name, () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 55_000);
+      const promise = fetch("/api/analyze", {
+        method: "POST",
+        body: fd,
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+      return { promise, abort: () => controller.abort() };
+    });
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {

@@ -7,7 +7,7 @@
  *   - Amazon S3               → Analysis result caching
  *
  * Credentials are picked up automatically in this order:
- *   1. Explicit env vars: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional AWS_SESSION_TOKEN)
+ *   1. Explicit env vars: CS_AWS_ACCESS_KEY_ID + CS_AWS_SECRET_ACCESS_KEY (+ optional CS_AWS_SESSION_TOKEN)
  *   2. IAM role attached to the EC2 instance / ECS task / Lambda function
  *   3. AWS default credential chain (~/.aws/credentials)
  */
@@ -17,16 +17,16 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
 
-const region = process.env.AWS_REGION ?? "us-east-1";
+const region = process.env.CS_AWS_REGION ?? "us-east-1";
 
 function buildCredentials() {
-  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  if (process.env.CS_AWS_ACCESS_KEY_ID && process.env.CS_AWS_SECRET_ACCESS_KEY) {
     return {
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        ...(process.env.AWS_SESSION_TOKEN
-          ? { sessionToken: process.env.AWS_SESSION_TOKEN }
+        accessKeyId: process.env.CS_AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.CS_AWS_SECRET_ACCESS_KEY,
+        ...(process.env.CS_AWS_SESSION_TOKEN
+          ? { sessionToken: process.env.CS_AWS_SESSION_TOKEN }
           : {}),
       },
     };

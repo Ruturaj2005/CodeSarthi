@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getDb } from "@/lib/db";
+
+// Amplify / Vercel: extend Lambda timeout to 60 s (set to max your plan allows)
+export const maxDuration = 60;
+// Force Node.js runtime — required for Buffer, crypto, etc. on Amplify
+export const runtime = "nodejs";
 import type {
   Repository,
   GraphNode,
@@ -690,30 +695,40 @@ export async function GET(req: NextRequest) {
         { status: 422 }
       );
 
-    // 4. Fetch file contents in parallel (only top 35 by priority)
+    // 4. Fetch file contents in batches to avoid Amplify Lambda timeout.
+    //    35 parallel requests can take 20-30 s; batching keeps us well under 29 s.
     const contentMap: Record<string, string> = {};
-    await Promise.all(
-      contentCandidates.map(async ({ path }) => {
-        try {
-          const r = await fetch(
-            `${GITHUB_API}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`,
-            { headers }
-          );
-          if (!r.ok) return;
-          const d = await r.json();
-          if (d.encoding === "base64" && d.content) {
-            contentMap[path] = Buffer.from(
-              d.content.replace(/\n/g, ""),
-              "base64"
-            )
-              .toString("utf-8")
-              .slice(0, 4000);
+    const BATCH = 8;   // max concurrent GitHub fetches per round
+    const FETCH_TIMEOUT_MS = 7_000; // per-file timeout
+    for (let i = 0; i < contentCandidates.length; i += BATCH) {
+      const batch = contentCandidates.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async ({ path }) => {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+          try {
+            const r = await fetch(
+              `${GITHUB_API}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`,
+              { headers, signal: controller.signal }
+            );
+            if (!r.ok) return;
+            const d = await r.json();
+            if (d.encoding === "base64" && d.content) {
+              contentMap[path] = Buffer.from(
+                d.content.replace(/\n/g, ""),
+                "base64"
+              )
+                .toString("utf-8")
+                .slice(0, 4000);
+            }
+          } catch {
+            // skip unreadable / timed-out files
+          } finally {
+            clearTimeout(timer);
           }
-        } catch {
-          // skip unreadable files
-        }
-      })
-    );
+        })
+      );
+    }
 
     // 5. Build nodes
     const positions = layoutNodes(selected.map((f) => ({ id: f.path, type: f.type, layer: layerOf(f.type), group: groupOf(f.path) })));
