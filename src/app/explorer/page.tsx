@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
@@ -11,17 +11,14 @@ import {
   GitBranch,
   FileCode,
   Trophy,
-  Zap,
   ChevronRight,
   Code2,
   BarChart3,
-  Timer,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import LearningPath from "@/components/explorer/LearningPath";
 import NodeDetail from "@/components/explorer/NodeDetail";
 import SarthiChat from "@/components/explorer/SarthiChat";
-import HackathonMode from "@/components/explorer/HackathonMode";
 import { MOCK_REPO, CONTRIBUTION_SCORE } from "@/lib/mockData";
 import { repoStore } from "@/lib/repoStore";
 import type { GraphNode, Language, Repository, NodeType } from "@/lib/types";
@@ -46,7 +43,7 @@ const CodeMap = dynamic(() => import("@/components/explorer/CodeMap"), {
   ),
 });
 
-type RightPanel = "detail" | "chat" | "hackathon" | "score";
+type RightPanel = "detail" | "chat" | "score";
 
 export default function ExplorerPage() {
   const [repo, setRepo] = useState<Repository>(MOCK_REPO);
@@ -54,20 +51,48 @@ export default function ExplorerPage() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanel>("detail");
   const [language, setLanguage] = useState<Language>("en");
-  const [activeStep, setActiveStep] = useState<string>("ls2");
+  const [activeStep, setActiveStep] = useState<string>("");
   const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
-  const [showHackathon, setShowHackathon] = useState(false);
   const [exploredNode, setExploredNode] = useState<string | null>(null);
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; node?: string | null }[]>([]);
+  const [rightPanelWidth, setRightPanelWidth] = useState(288);
+  const isResizing = useRef(false);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    const startX = e.clientX;
+    const startWidth = rightPanelWidth;
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const delta = startX - ev.clientX;
+      setRightPanelWidth(Math.min(600, Math.max(220, startWidth + delta)));
+    };
+    const onUp = () => {
+      isResizing.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [rightPanelWidth]);
 
   // Load real repo from localStorage, fall back to demo
   useEffect(() => {
     const stored = repoStore.load();
-    if (stored) {
-      setRepo(stored);
-      setIsDemo(false);
-    } else {
-      setRepo(MOCK_REPO);
-      setIsDemo(true);
+    const r = stored ?? MOCK_REPO;
+    setRepo(r);
+    setIsDemo(!stored);
+    // Set first available step as active
+    const firstStep = r.learningPath.find((s) => s.status !== "completed") ?? r.learningPath[0];
+    if (firstStep) setActiveStep(firstStep.id);
+
+    // Load previous chat history for this project
+    if (stored?.projectId) {
+      fetch(`/api/chat?projectId=${encodeURIComponent(stored.projectId)}`)
+        .then((res) => res.json())
+        .then((data) => { if (data.messages?.length) setChatHistory(data.messages); })
+        .catch(() => {});
     }
   }, []);
 
@@ -125,7 +150,7 @@ export default function ExplorerPage() {
           <div className="flex items-center gap-1.5">
             <Github className="w-3.5 h-3.5" style={{ color: "#6B6B80" }} />
             <span className="text-xs font-mono" style={{ color: "#9090A0" }}>
-              {(repo.url.match(/github\.com\/([^/]+)\//) ?? [])[1] ?? ""}/
+              {((repo.url ?? repo.repoUrl ?? "").match(/github\.com\/([^/]+)\//) ?? [])[1] ?? ""}/
             </span>
             <span className="text-xs font-mono font-semibold" style={{ color: "#E8E8F0" }}>
               {repo.name}
@@ -233,35 +258,8 @@ export default function ExplorerPage() {
             onNodeExplore={handleNodeExplore}
           />
 
-          {/* Hackathon mode overlay */}
-          <AnimatePresence>
-            {showHackathon && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                className="absolute bottom-4 left-4 right-4 z-30 max-w-md mx-auto"
-              >
-                <HackathonMode onClose={() => setShowHackathon(false)} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* Floating action bar */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
-            <button
-              onClick={() => setShowHackathon(!showHackathon)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-90"
-              style={{
-                background: showHackathon ? "rgba(255,77,109,0.2)" : "rgba(17,17,24,0.9)",
-                border: `1px solid ${showHackathon ? "#FF4D6D" : "rgba(255,255,255,0.07)"}`,
-                color: showHackathon ? "#FF4D6D" : "#6B6B80",
-                backdropFilter: "blur(10px)",
-              }}
-            >
-              <Timer className="w-3.5 h-3.5" />
-              Hackathon Mode
-            </button>
             <Link
               href="/flow"
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-90"
@@ -280,9 +278,20 @@ export default function ExplorerPage() {
 
         {/* RIGHT PANEL — Tabs */}
         <div
-          className="w-72 flex-shrink-0 border-l flex flex-col overflow-hidden"
-          style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(17,17,24,0.8)" }}
+          className="flex-shrink-0 border-l flex flex-col overflow-hidden relative"
+          style={{ width: rightPanelWidth, borderColor: "rgba(255,255,255,0.06)", background: "rgba(17,17,24,0.8)" }}
         >
+          {/* Drag handle */}
+          <div
+            onMouseDown={startResize}
+            className="absolute left-0 top-0 h-full w-1 z-50 cursor-col-resize group"
+            style={{ background: "transparent" }}
+          >
+            <div
+              className="absolute left-0 top-0 h-full w-1 transition-colors group-hover:bg-purple-500/60"
+              style={{ background: "transparent" }}
+            />
+          </div>
           {/* Panel tabs */}
           <div
             className="flex border-b flex-shrink-0"
@@ -316,6 +325,7 @@ export default function ExplorerPage() {
                 node={selectedNode}
                 onClose={() => { setSelectedNode(null); setExploredNode(null); setHighlightedNodes([]); }}
                 language={language}
+                projectId={repo.projectId}
                 edges={repo.edges}
                 allNodes={repo.nodes}
                 onExploreNode={handleNodeExplore}
@@ -326,6 +336,14 @@ export default function ExplorerPage() {
               <SarthiChat
                 language={language}
                 onLanguageChange={setLanguage}
+                projectId={repo.projectId}
+                repoContext={repo.nodes
+                  .slice(0, 25)
+                  .map(
+                    (n) =>
+                      `[${n.file}]\n${n.description}\nFunctions: ${n.functions.join(", ")}\n\n${n.codePreview.slice(0, 600)}`
+                  )
+                  .join("\n\n---\n\n")}
               />
             )}
             {rightPanel === "score" && (
@@ -338,23 +356,87 @@ export default function ExplorerPage() {
   );
 }
 
+interface ScoreData {
+  score: number;
+  label: string;
+  strengths: string[];
+  warnings: string[];
+  gaps: string[];
+  suggestedIssues: string[];
+}
+
 function ContributionScore({ repo }: { repo: Repository }) {
-  const nodeTypes = new Set(repo.nodes.map((n) => n.type));
-  const layers: NodeType[] = ["entry", "config", "page", "controller", "service", "model"];
-  const found = layers.filter((t) => nodeTypes.has(t));
-  const score = Math.min(95, Math.round(40 + found.length * 8 + Math.min(15, repo.nodes.length)));
-  const strengths = found.map((t) => `Understand the ${t} layer`);
-  const warnings = repo.nodes
-    .filter((n) => n.complexity === "high")
-    .slice(0, 2)
-    .map((n) => `${n.label} has high complexity — read carefully`);
-  const gaps = layers
-    .filter((t) => !nodeTypes.has(t))
-    .map((t) => `${t} layer not yet identified in this repo`);
-  const suggestedIssues = repo.nodes
-    .slice(0, 3)
-    .map((n) => `Add inline documentation to ${n.label}`);
+  const [data, setData] = useState<ScoreData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/score", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: repo.name,
+        framework: repo.framework,
+        language: repo.language,
+        stats: repo.stats,
+        nodes: repo.nodes.map((n) => ({
+          label: n.label,
+          type: n.type,
+          file: n.file,
+          complexity: n.complexity,
+          linesOfCode: n.linesOfCode,
+        })),
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.score != null) setData(d);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [repo.id]);
+
+  const score = data?.score ?? 0;
   const pct = score;
+
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-3 p-6">
+        <div className="relative w-28 h-28">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+            <motion.circle
+              cx="50" cy="50" r="40"
+              fill="none"
+              stroke="rgba(110,86,207,0.3)"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * 40}`}
+              strokeDashoffset={`${2 * Math.PI * 40 * 0.7}`}
+              animate={{ strokeDashoffset: [2 * Math.PI * 40 * 0.7, 2 * Math.PI * 40 * 0.1, 2 * Math.PI * 40 * 0.7] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-[10px]" style={{ color: "#6B6B80" }}>Analysing…</span>
+          </div>
+        </div>
+        <p className="text-xs text-center" style={{ color: "#6B6B80" }}>
+          AI is reviewing your codebase
+        </p>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <p className="text-xs text-center" style={{ color: "#6B6B80" }}>
+          Could not generate score. Check your Gemini API key.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
@@ -370,8 +452,7 @@ function ContributionScore({ repo }: { repo: Repository }) {
               strokeWidth="8"
               strokeLinecap="round"
               strokeDasharray={`${2 * Math.PI * 40}`}
-              strokeDashoffset={`${2 * Math.PI * 40 * (1 - pct / 100)}`}
-              initial={{ strokeDashoffset: 2 * Math.PI * 40 }}
+              strokeDashoffset={`${2 * Math.PI * 40}`}
               animate={{ strokeDashoffset: 2 * Math.PI * 40 * (1 - pct / 100) }}
               transition={{ duration: 1.5, ease: "easeOut" }}
             />
@@ -383,7 +464,15 @@ function ContributionScore({ repo }: { repo: Repository }) {
             </defs>
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold" style={{ color: "#E8E8F0" }}>{score}</span>
+            <motion.span
+              className="text-2xl font-bold"
+              style={{ color: "#E8E8F0" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
+              {score}
+            </motion.span>
             <span className="text-[10px]" style={{ color: "#6B6B80" }}>/ 100</span>
           </div>
         </div>
@@ -391,68 +480,76 @@ function ContributionScore({ repo }: { repo: Repository }) {
           Contribution Readiness
         </h3>
         <p className="text-[11px]" style={{ color: "#6B6B80" }}>
-          You&apos;re ready to contribute!
+          {data.label}
         </p>
       </div>
 
       {/* Strengths */}
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#00D2A0" }}>
-          ✅ Strengths
-        </p>
-        {strengths.map((s) => (
-          <div key={s} className="flex items-start gap-2 py-1.5 text-xs" style={{ color: "#9090A0" }}>
-            <span style={{ color: "#00D2A0" }}>✓</span>
-            {s}
-          </div>
-        ))}
-      </div>
+      {data.strengths.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#00D2A0" }}>
+            ✅ Strengths
+          </p>
+          {data.strengths.map((s) => (
+            <div key={s} className="flex items-start gap-2 py-1.5 text-xs" style={{ color: "#9090A0" }}>
+              <span style={{ color: "#00D2A0" }}>✓</span>
+              {s}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Warnings */}
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#F5A623" }}>
-          ⚠️ Review
-        </p>
-        {warnings.map((w) => (
-          <div key={w} className="flex items-start gap-2 py-1.5 text-xs" style={{ color: "#9090A0" }}>
-            <span style={{ color: "#F5A623" }}>⚠</span>
-            {w}
-          </div>
-        ))}
-      </div>
+      {data.warnings.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#F5A623" }}>
+            ⚠️ Review
+          </p>
+          {data.warnings.map((w) => (
+            <div key={w} className="flex items-start gap-2 py-1.5 text-xs" style={{ color: "#9090A0" }}>
+              <span style={{ color: "#F5A623" }}>⚠</span>
+              {w}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Gaps */}
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#FF4D6D" }}>
-          ❌ Study More
-        </p>
-        {gaps.map((g) => (
-          <div key={g} className="flex items-start gap-2 py-1.5 text-xs" style={{ color: "#9090A0" }}>
-            <span style={{ color: "#FF4D6D" }}>×</span>
-            {g}
-          </div>
-        ))}
-      </div>
+      {data.gaps.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#FF4D6D" }}>
+            ❌ Study More
+          </p>
+          {data.gaps.map((g) => (
+            <div key={g} className="flex items-start gap-2 py-1.5 text-xs" style={{ color: "#9090A0" }}>
+              <span style={{ color: "#FF4D6D" }}>×</span>
+              {g}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Suggested issues */}
-      <div
-        className="p-3 rounded-xl"
-        style={{ background: "rgba(110,86,207,0.08)", border: "1px solid rgba(110,86,207,0.2)" }}
-      >
-        <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#A78BFA" }}>
-          💡 Suggested First Issues
-        </p>
-        {suggestedIssues.map((issue) => (
-          <div
-            key={issue}
-            className="py-1.5 text-xs flex items-start gap-1.5"
-            style={{ color: "#9090A0" }}
-          >
-            <span style={{ color: "#6E56CF" }}>→</span>
-            {issue}
-          </div>
-        ))}
-      </div>
+      {data.suggestedIssues.length > 0 && (
+        <div
+          className="p-3 rounded-xl"
+          style={{ background: "rgba(110,86,207,0.08)", border: "1px solid rgba(110,86,207,0.2)" }}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: "#A78BFA" }}>
+            💡 Suggested First Issues
+          </p>
+          {data.suggestedIssues.map((issue) => (
+            <div
+              key={issue}
+              className="py-1.5 text-xs flex items-start gap-1.5"
+              style={{ color: "#9090A0" }}
+            >
+              <span style={{ color: "#6E56CF" }}>→</span>
+              {issue}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

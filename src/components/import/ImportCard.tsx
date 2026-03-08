@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, DragEvent } from "react";
+import { useState, useRef, useEffect, DragEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -12,17 +12,27 @@ import {
   CheckCircle2,
   AlertCircle,
   Zap,
-  Lock,
+  Clock,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import { sleep } from "@/lib/utils";
 import { repoStore } from "@/lib/repoStore";
 
 const PROGRESS_STEPS = [
-  { id: 1, label: "Connecting to GitHub", detail: "Fetching repository info..." },
-  { id: 2, label: "Reading file structure", detail: "Scanning source files..." },
-  { id: 3, label: "Analysing code", detail: "Categorising modules..." },
-  { id: 4, label: "Building architecture graph", detail: "Mapping dependencies..." },
-  { id: 5, label: "Generating learning path", detail: "Creating personalised guide..." },
+  { id: 1, label: "Connecting to GitHub", detail: "Fetching repository metadata..." },
+  { id: 2, label: "Fetching file tree", detail: "Scanning repository structure..." },
+  { id: 3, label: "Analysing codebase", detail: "Running AI-powered code categorisation..." },
+  { id: 4, label: "Building architecture graph", detail: "Mapping module dependencies..." },
+  { id: 5, label: "Generating embeddings", detail: "Storing vectors for AI search..." },
+];
+
+const ZIP_PROGRESS_STEPS = [
+  { id: 1, label: "Reading ZIP archive", detail: "Extracting repository files..." },
+  { id: 2, label: "Scanning project files", detail: "Detecting language and framework..." },
+  { id: 3, label: "Analysing codebase", detail: "Running AI-powered code categorisation..." },
+  { id: 4, label: "Building architecture graph", detail: "Mapping module dependencies..." },
+  { id: 5, label: "Generating embeddings", detail: "Storing vectors for AI search..." },
 ];
 
 const SAMPLE_REPOS = [
@@ -34,16 +44,54 @@ const SAMPLE_REPOS = [
 
 type Stage = "input" | "analyzing" | "done";
 
+interface RecentProject {
+  projectId: string;
+  name: string;
+  repoUrl: string;
+  language: string;
+  framework: string;
+  description?: string;
+  createdAt: string;
+}
+
 export default function ImportCard() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("input");
   const [url, setUrl] = useState("");
-  const [tab, setTab] = useState<"url" | "upload" | "github">("url");
+  const [tab, setTab] = useState<"url" | "upload">("url");
   const [isDragging, setIsDragging] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
+  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [activeSteps, setActiveSteps] = useState(PROGRESS_STEPS);
+  const [analysisLabel, setAnalysisLabel] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [loadingProject, setLoadingProject] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((r) => r.json())
+      .then((d) => { if (d.projects?.length) setRecentProjects(d.projects); })
+      .catch(() => {});
+  }, []);
+
+  const handleOpenProject = async (projectId: string) => {
+    setLoadingProject(projectId);
+    try {
+      const res = await fetch(`/api/repo?id=${encodeURIComponent(projectId)}`);
+      const data = await res.json();
+      if (data.repo) {
+        repoStore.save(data.repo);
+        router.push("/explorer");
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingProject(null);
+    }
+  };
 
   const validate = (val: string) => {
     if (!val.trim()) return "Please enter a GitHub repository URL.";
@@ -51,21 +99,18 @@ export default function ImportCard() {
     return "";
   };
 
-  const handleAnalyze = async (repoUrl?: string) => {
-    const target = repoUrl ?? url;
-    const err = validate(target);
-    if (err) { setError(err); return; }
-    setError("");
+  const runAnalysis = async (
+    steps: typeof PROGRESS_STEPS,
+    label: string,
+    fetchPromise: Promise<Response>
+  ) => {
+    setActiveSteps(steps);
+    setAnalysisLabel(label);
     setStage("analyzing");
     setCurrentStep(0);
     setProgress(0);
-
     try {
-      // Kick off real API call immediately
-      const analyzePromise = fetch(`/api/analyze?url=${encodeURIComponent(target)}`);
-
-      // Animate fake progress steps while waiting
-      const numSteps = PROGRESS_STEPS.length;
+      const numSteps = steps.length;
       for (let i = 0; i < numSteps - 1; i++) {
         setCurrentStep(i);
         const targetPct = ((i + 1) / numSteps) * 75;
@@ -75,22 +120,15 @@ export default function ImportCard() {
         }
         await sleep(500);
       }
-
-      // Wait for real API response
       setCurrentStep(numSteps - 1);
-      const res = await analyzePromise;
+      const res = await fetchPromise;
       const data = await res.json();
-
       if (!res.ok) {
         setStage("input");
         setError(data.error ?? "Analysis failed. Please try again.");
         return;
       }
-
-      // Save real repo data to store
       repoStore.save(data);
-
-      // Finish progress animation
       for (let p = 75; p <= 100; p += 2) {
         setProgress(p);
         await sleep(20);
@@ -104,12 +142,30 @@ export default function ImportCard() {
     }
   };
 
+  const handleAnalyze = async (repoUrl?: string) => {
+    const target = repoUrl ?? url;
+    const err = validate(target);
+    if (err) { setError(err); return; }
+    setError("");
+    await runAnalysis(PROGRESS_STEPS, target, fetch(`/api/analyze?url=${encodeURIComponent(target)}`));
+  };
+
+  const handleZipAnalyze = async () => {
+    if (!zipFile) { setError("Please select a ZIP file first."); return; }
+    setError("");
+    const fd = new FormData();
+    fd.append("zip", zipFile);
+    await runAnalysis(ZIP_PROGRESS_STEPS, zipFile.name, fetch("/api/analyze", { method: "POST", body: fd }));
+  };
+
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file && file.name.endsWith(".zip")) {
-      handleAnalyze("https://github.com/example/uploaded-repo");
+    if (file && file.name.toLowerCase().endsWith(".zip")) {
+      setZipFile(file);
+      setError("");
+      setTab("upload");
     } else {
       setError("Please drop a .zip file.");
     }
@@ -139,7 +195,6 @@ export default function ImportCard() {
               {[
                 { id: "url", icon: Link2, label: "GitHub URL" },
                 { id: "upload", icon: Upload, label: "Upload ZIP" },
-                { id: "github", icon: Github, label: "Connect GitHub" },
               ].map(({ id, icon: Icon, label }) => (
                 <button
                   key={id}
@@ -236,62 +291,69 @@ export default function ImportCard() {
 
               {/* Upload Tab */}
               {tab === "upload" && (
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-xl p-10 text-center cursor-pointer transition-all"
-                  style={{
-                    border: `2px dashed ${isDragging ? "#6E56CF" : "rgba(110,86,207,0.3)"}`,
-                    background: isDragging ? "rgba(110,86,207,0.08)" : "rgba(110,86,207,0.03)",
-                  }}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".zip"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) handleAnalyze("https://github.com/example/uploaded-repo");
-                    }}
-                  />
-                  <Folder className="w-10 h-10 mx-auto mb-3" style={{ color: "#6E56CF" }} />
-                  <p className="font-medium mb-1" style={{ color: "#E8E8F0" }}>
-                    Drop your repository ZIP here
-                  </p>
-                  <p className="text-xs" style={{ color: "#6B6B80" }}>
-                    or click to browse · .zip files only
-                  </p>
-                </div>
-              )}
-
-              {/* GitHub OAuth Tab */}
-              {tab === "github" && (
-                <div className="text-center py-6">
+                <div className="space-y-4">
                   <div
-                    className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                    onClick={() => !zipFile && fileInputRef.current?.click()}
+                    className="rounded-xl p-8 text-center transition-all"
+                    style={{
+                      border: `2px dashed ${isDragging ? "#6E56CF" : "rgba(110,86,207,0.3)"}`,
+                      background: isDragging ? "rgba(110,86,207,0.08)" : "rgba(110,86,207,0.03)",
+                      cursor: zipFile ? "default" : "pointer",
+                    }}
                   >
-                    <Github className="w-8 h-8" style={{ color: "#E8E8F0" }} />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".zip"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) { setZipFile(f); setError(""); }
+                        e.target.value = "";
+                      }}
+                    />
+                    {zipFile ? (
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-3">
+                          <Folder className="w-8 h-8 flex-shrink-0" style={{ color: "#6E56CF" }} />
+                          <div className="text-left">
+                            <p className="font-medium text-sm truncate max-w-[200px]" style={{ color: "#E8E8F0" }}>{zipFile.name}</p>
+                            <p className="text-xs mt-0.5" style={{ color: "#6B6B80" }}>{(zipFile.size / 1024).toFixed(0)} KB · .zip</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setZipFile(null); }}
+                          className="p-1.5 rounded-lg transition-all hover:bg-white/10"
+                          style={{ color: "#6B6B80" }}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <Folder className="w-10 h-10 mx-auto mb-3" style={{ color: "#6E56CF" }} />
+                        <p className="font-medium mb-1" style={{ color: "#E8E8F0" }}>Drop your repository ZIP here</p>
+                        <p className="text-xs" style={{ color: "#6B6B80" }}>or click to browse · .zip files only</p>
+                      </>
+                    )}
                   </div>
-                  <h3 className="font-semibold mb-2" style={{ color: "#E8E8F0" }}>
-                    Connect GitHub Account
-                  </h3>
-                  <p className="text-xs mb-6" style={{ color: "#6B6B80" }}>
-                    Browse your private repositories and analyze them directly.
-                  </p>
+                  {error && (
+                    <p className="flex items-center gap-1 text-xs" style={{ color: "#FF4D6D" }}>
+                      <AlertCircle className="w-3 h-3" /> {error}
+                    </p>
+                  )}
                   <button
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all hover:bg-white/10"
-                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#E8E8F0" }}
+                    onClick={handleZipAnalyze}
+                    disabled={!zipFile}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm text-white transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: "linear-gradient(135deg, #6E56CF, #5B42C0)" }}
                   >
-                    <Github className="w-4 h-4" />
-                    Continue with GitHub — OAuth
+                    <Zap className="w-4 h-4" />
+                    Analyze Repository
                   </button>
-                  <div className="flex items-center gap-1.5 justify-center mt-3 text-[11px]" style={{ color: "#6B6B80" }}>
-                    <Lock className="w-3 h-3" />
-                    Secured via GitHub OAuth · We never store your code
-                  </div>
                 </div>
               )}
             </div>
@@ -328,7 +390,7 @@ export default function ImportCard() {
                 </h3>
               </div>
               <p className="text-xs font-mono ml-8" style={{ color: "#6B6B80" }}>
-                {url || "django-rest-api"}
+                {analysisLabel || "repository"}
               </p>
             </div>
 
@@ -352,7 +414,7 @@ export default function ImportCard() {
 
               {/* Steps */}
               <div className="space-y-2">
-                {PROGRESS_STEPS.map((step, i) => {
+                {activeSteps.map((step, i) => {
                   const done = i < currentStep || stage === "done";
                   const active = i === currentStep && stage === "analyzing";
                   return (
@@ -426,6 +488,79 @@ export default function ImportCard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Recent Projects */}
+      {stage === "input" && recentProjects.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mt-6"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-3.5 h-3.5" style={{ color: "#6E56CF" }} />
+            <span className="text-xs font-semibold" style={{ color: "#9090A0" }}>Recent Projects</span>
+          </div>
+          <div className="space-y-2">
+            {recentProjects.map((p) => {
+              const owner = (p.repoUrl.match(/github\.com\/([^/]+)\//) ?? [])[1] ?? "";
+              return (
+                <motion.div
+                  key={p.projectId}
+                  whileHover={{ scale: 1.01 }}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl"
+                  style={{
+                    background: "rgba(17,17,24,0.95)",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                  }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: "rgba(110,86,207,0.12)", border: "1px solid rgba(110,86,207,0.2)" }}
+                    >
+                      <Github className="w-4 h-4" style={{ color: "#6E56CF" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-xs font-mono" style={{ color: "#9090A0" }}>{owner}/</span>
+                        <span className="text-xs font-mono font-semibold truncate" style={{ color: "#E8E8F0" }}>{p.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                          style={{ background: "rgba(110,86,207,0.12)", color: "#A78BFA" }}
+                        >{p.language}</span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                          style={{ background: "rgba(0,210,160,0.08)", color: "#00D2A0" }}
+                        >{p.framework}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleOpenProject(p.projectId)}
+                    disabled={loadingProject === p.projectId}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-80 flex-shrink-0 ml-2"
+                    style={{
+                      background: "rgba(110,86,207,0.15)",
+                      border: "1px solid rgba(110,86,207,0.3)",
+                      color: "#A78BFA",
+                    }}
+                  >
+                    {loadingProject === p.projectId ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ExternalLink className="w-3 h-3" />
+                    )}
+                    Open
+                  </button>
+                </motion.div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

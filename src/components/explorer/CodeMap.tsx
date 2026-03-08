@@ -68,6 +68,34 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
     setNodePositions(Object.fromEntries(nodes.map((n) => [n.id, { x: n.x, y: n.y }])));
     setFnNodePositions({});
     setExpandedFnNodes(new Set());
+
+    // Auto-fit all nodes into view when a new repo loads
+    // Use rAF to let the SVG render and get the container size first
+    requestAnimationFrame(() => {
+      if (!svgRef.current || nodes.length === 0) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      const W = rect.width;
+      const H = rect.height;
+      if (!W || !H) return;
+
+      const positions = Object.fromEntries(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+      const xs = nodes.map((n) => positions[n.id]?.x ?? n.x);
+      const ys = nodes.map((n) => positions[n.id]?.y ?? n.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      const maxX = Math.max(...xs) + NODE_W;
+      const maxY = Math.max(...ys) + NODE_H;
+      const pad = 60;
+      const z = Math.min(1, Math.max(0.25, Math.min(
+        (W - pad * 2) / (maxX - minX),
+        (H - pad * 2) / (maxY - minY)
+      )));
+      setZoom(z);
+      setPan({
+        x: (W - (maxX - minX) * z) / 2 - minX * z,
+        y: (H - (maxY - minY) * z) / 2 - minY * z,
+      });
+    });
   }, [nodes]);
 
   // Collapse all fn sub-nodes when explore mode turns off

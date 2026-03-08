@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
+import { getDb } from "@/lib/db";
 import type {
   Repository,
   GraphNode,
@@ -760,7 +762,177 @@ export async function GET(req: NextRequest) {
       learningPath,
     };
 
-    return NextResponse.json(repository);
+    // 7. Generate projectId, persist to MongoDB, trigger n8n embedding webhook
+    const projectId = randomUUID();
+
+    // Save project to MongoDB (non-blocking — don't fail the request if this errors)
+    (async () => {
+      try {
+        const db = await getDb();
+        await db.collection("projects").insertOne({
+          _id: projectId as unknown as import("mongodb").ObjectId,
+          projectId,
+          repoUrl,
+          url: repoUrl,
+          owner,
+          repoName: repo,
+          name: repository.name,
+          description: repository.description,
+          language: repository.language,
+          framework: repository.framework,
+          projectType: repository.projectType,
+          complexity: repository.complexity,
+          stats: repository.stats,
+          nodes: repository.nodes,
+          edges: repository.edges,
+          flows: repository.flows,
+          learningPath: repository.learningPath,
+          createdAt: new Date(),
+        });
+        console.log(`[analyze] Saved project ${projectId} to MongoDB`);
+      } catch (dbErr) {
+        console.error("[analyze] MongoDB save error:", dbErr);
+      }
+    })();
+
+    // Trigger n8n embedding webhook — awaited so we wait for success response
+    // Build per-file metadata payload and generate embeddings locally
+    try {
+      const today = new Date().toISOString().split("T")[0];
+
+      // Build function signatures from content (name + params)
+      function extractFnSignatures(content: string, filePath: string): { name: string; signature: string }[] {
+        const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+        const sigs: { name: string; signature: string }[] = [];
+        const seen = new Set<string>();
+
+        const addSig = (name: string, params: string) => {
+          if (seen.has(name)) return;
+          seen.add(name);
+          sigs.push({ name, signature: `${name}(${params.trim()})` });
+        };
+
+        if (ext === "py") {
+          for (const m of content.matchAll(/^\s*(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)/gm))
+            if (!m[1].startsWith("__") || m[1] === "__init__") addSig(m[1], m[2]);
+        } else {
+          for (const m of content.matchAll(/(?:^|[^.])(?:async\s+)?function\s+([A-Za-z]\w*)\s*\(([^)]*)\)/gm))
+            addSig(m[1], m[2]);
+          for (const m of content.matchAll(/(?:const|let|var)\s+([A-Za-z]\w*)\s*=\s*(?:async\s+)?\(([^)]*)\)/g))
+            addSig(m[1], m[2]);
+          for (const m of content.matchAll(/([A-Za-z]\w*)\s*:\s*(?:async\s+)?function\s*\(([^)]*)\)/g))
+            addSig(m[1], m[2]);
+        }
+        return sigs.slice(0, 8);
+      }
+
+      const filesPayload = selected.map((file) => {
+        const content = contentMap[file.path] ?? "";
+        const fns = extractFnSignatures(content, file.path).map((fn) => ({
+          ...fn,
+          file: file.path,
+        }));
+        const imports = parseImports(content, file.path).slice(0, 10);
+        const loc = content ? content.split("\n").length : 0;
+
+        return {
+          projectId,
+          file: file.path,
+          type: file.type,
+          functions: fns,
+          imports,
+          linesOfCode: loc,
+          createdAt: today,
+        };
+      });
+
+      // Fire-and-forget: generate embeddings locally and store in MongoDB
+      (async () => {
+        try {
+          const openaiKey = process.env.OPENAI_API_KEY;
+          if (!openaiKey) {
+            console.warn("[analyze] OPENAI_API_KEY not set — skipping embeddings");
+            return;
+          }
+
+          const CHUNK_SIZE = 900;
+          const OVERLAP = 150;
+
+          type EmbChunk = {
+            projectId: string;
+            repoUrl: string;
+            filePath: string;
+            chunkIndex: number;
+            content: string;
+          };
+
+          // Build text chunks (same logic as n8n)
+          const chunks: EmbChunk[] = [];
+          for (const file of filesPayload) {
+            const fileText = [
+              `FILE: ${file.file}`,
+              `TYPE: ${file.type}`,
+              `LINES: ${file.linesOfCode}`,
+              ``,
+              `FUNCTIONS:`,
+              file.functions.map((f: { name: string; signature: string }) => `${f.name} -> ${f.signature}`).join("\n"),
+              ``,
+              `IMPORTS:`,
+              file.imports.join(", "),
+            ].join("\n").trim();
+
+            let start = 0;
+            let index = 0;
+            while (start < fileText.length) {
+              chunks.push({
+                projectId: file.projectId,
+                repoUrl,
+                filePath: file.file,
+                chunkIndex: index,
+                content: fileText.slice(start, start + CHUNK_SIZE),
+              });
+              start += CHUNK_SIZE - OVERLAP;
+              index++;
+            }
+          }
+
+          if (chunks.length === 0) return;
+
+          // Call OpenAI embeddings in batches of 100
+          const BATCH = 100;
+          const embeddings: number[][] = [];
+          for (let i = 0; i < chunks.length; i += BATCH) {
+            const inputs = chunks.slice(i, i + BATCH).map((c) => c.content);
+            const res = await fetch("https://api.openai.com/v1/embeddings", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${openaiKey}`,
+              },
+              body: JSON.stringify({ model: "text-embedding-3-small", input: inputs }),
+            });
+            if (!res.ok) {
+              console.error("[analyze] OpenAI embeddings error:", res.status, await res.text());
+              return;
+            }
+            const data = (await res.json()) as { data: { embedding: number[] }[] };
+            for (const d of data.data) embeddings.push(d.embedding);
+          }
+
+          // Insert into MongoDB embeddings collection
+          const embDb = await getDb();
+          const docs = chunks.map((c, i) => ({ ...c, embedding: embeddings[i] }));
+          await embDb.collection("codeSarthi").insertMany(docs);
+          console.log(`[analyze] Stored ${docs.length} embedding chunks for project ${projectId}`);
+        } catch (embErr) {
+          console.error("[analyze] Embedding error:", embErr);
+        }
+      })();
+    } catch (webhookErr) {
+      console.error("[analyze] Payload build error:", webhookErr);
+    }
+
+    return NextResponse.json({ ...repository, projectId });
   } catch (err) {
     console.error("[analyze]", err);
     return NextResponse.json(
@@ -768,4 +940,262 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// ────────────────────────────────────────────────────────────
+// POST handler: ZIP file upload
+// ────────────────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const file = formData.get("zip") as File | null;
+  if (!file)
+    return NextResponse.json({ error: "No ZIP file provided." }, { status: 400 });
+  if (!file.name.toLowerCase().endsWith(".zip"))
+    return NextResponse.json({ error: "Please upload a .zip file." }, { status: 400 });
+
+  // Extract ZIP in memory
+  let allFiles: string[];
+  const contentMap: Record<string, string> = {};
+  try {
+    const { unzipSync } = await import("fflate");
+    const buf = await file.arrayBuffer();
+    const unzipped = unzipSync(new Uint8Array(buf));
+
+    // Strip common root prefix (GitHub zips as "repo-branch/")
+    const rawPaths = Object.keys(unzipped).filter(
+      (p) => !p.endsWith("/") && unzipped[p].length > 0
+    );
+    if (!rawPaths.length)
+      return NextResponse.json({ error: "ZIP appears to be empty." }, { status: 422 });
+
+    const seg0 = rawPaths[0].split("/")[0];
+    const candidate = seg0 + "/";
+    const hasSingleRoot = rawPaths.every((p) => p.startsWith(candidate));
+    const normalize = (p: string) => (hasSingleRoot ? p.slice(candidate.length) : p);
+
+    allFiles = rawPaths.map(normalize).filter(Boolean);
+
+    for (const rawPath of rawPaths) {
+      const normPath = normalize(rawPath);
+      if (!normPath) continue;
+      try {
+        const text = new TextDecoder("utf-8", { fatal: true })
+          .decode(unzipped[rawPath])
+          .slice(0, 4000);
+        contentMap[normPath] = text;
+      } catch {
+        // Binary file — skip content
+      }
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to extract ZIP: ${msg}` }, { status: 422 });
+  }
+
+  if (!allFiles.length)
+    return NextResponse.json({ error: "No files found in ZIP." }, { status: 422 });
+
+  const framework = detectFramework(allFiles);
+  const language = detectLanguage(allFiles);
+
+  type Ranked = { path: string; type: NodeType; priority: number };
+  const ranked: Ranked[] = allFiles
+    .map((p) => ({ path: p, ...categorize(p) }))
+    .filter((f) => f.type != null) as Ranked[];
+  ranked.sort((a, b) => b.priority - a.priority);
+  const selected = ranked.slice(0, 60);
+
+  if (!selected.length)
+    return NextResponse.json(
+      { error: "No analysable source files found in this ZIP." },
+      { status: 422 }
+    );
+
+  const repoName = file.name.replace(/\.zip$/i, "");
+  const syntheticUrl = `zip://${file.name}`;
+  const positions = layoutNodes(selected.map((f) => ({ id: f.path, type: f.type })));
+
+  const nodes: GraphNode[] = selected.map((f, idx) => {
+    const content = contentMap[f.path] ?? "";
+    return {
+      id: `n${idx + 1}`,
+      label: f.path.split("/").pop() ?? f.path,
+      type: f.type,
+      file: f.path,
+      x: positions[f.path]?.x ?? 100 + idx * 160,
+      y: positions[f.path]?.y ?? 100,
+      description: describe(f.path, f.type, content, framework),
+      functions: parseFunctions(content, f.path),
+      dependencies: parseImports(content, f.path).slice(0, 5),
+      codePreview: content || "# File content unavailable",
+      linesOfCode: content.split("\n").length,
+      complexity:
+        content.split("\n").length < 60
+          ? "low"
+          : content.split("\n").length < 200
+          ? "medium"
+          : "high",
+    };
+  });
+
+  const edges = buildEdges(nodes, contentMap);
+  const learningPath = buildLearningPath(nodes, framework);
+  const flows = generateFlow(nodes, repoName, framework);
+
+  const repository: Repository = {
+    id: randomUUID(),
+    url: syntheticUrl,
+    name: repoName,
+    description: `A ${framework} project (uploaded via ZIP)`,
+    language,
+    framework,
+    projectType: `${framework} Application`,
+    complexity:
+      nodes.length < 5 ? "beginner" : nodes.length < 10 ? "intermediate" : "advanced",
+    stats: {
+      files: allFiles.length,
+      linesOfCode: nodes.reduce((s, n) => s + n.linesOfCode, 0),
+      contributors: 1,
+      stars: 0,
+    },
+    nodes,
+    edges,
+    flows,
+    learningPath,
+  };
+
+  const projectId = randomUUID();
+
+  // Persist to MongoDB (fire-and-forget)
+  (async () => {
+    try {
+      const db = await getDb();
+      await db.collection("projects").insertOne({
+        _id: projectId as unknown as import("mongodb").ObjectId,
+        projectId,
+        repoUrl: syntheticUrl,
+        url: syntheticUrl,
+        owner: "upload",
+        repoName,
+        name: repository.name,
+        description: repository.description,
+        language: repository.language,
+        framework: repository.framework,
+        projectType: repository.projectType,
+        complexity: repository.complexity,
+        stats: repository.stats,
+        nodes: repository.nodes,
+        edges: repository.edges,
+        flows: repository.flows,
+        learningPath: repository.learningPath,
+        createdAt: new Date(),
+      });
+      console.log(`[analyze-zip] Saved project ${projectId} to MongoDB`);
+    } catch (dbErr) {
+      console.error("[analyze-zip] MongoDB save error:", dbErr);
+    }
+  })();
+
+  // Generate embeddings (fire-and-forget)
+  (async () => {
+    try {
+      const openaiKey = process.env.OPENAI_API_KEY;
+      if (!openaiKey) {
+        console.warn("[analyze-zip] OPENAI_API_KEY not set — skipping embeddings");
+        return;
+      }
+
+      function extractFnSigs(content: string, filePath: string): { name: string; signature: string }[] {
+        const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+        const sigs: { name: string; signature: string }[] = [];
+        const seen = new Set<string>();
+        const add = (name: string, params: string) => {
+          if (seen.has(name)) return;
+          seen.add(name);
+          sigs.push({ name, signature: `${name}(${params.trim()})` });
+        };
+        if (ext === "py") {
+          for (const m of content.matchAll(/^\s*(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)/gm))
+            if (!m[1].startsWith("__") || m[1] === "__init__") add(m[1], m[2]);
+        } else {
+          for (const m of content.matchAll(/(?:^|[^.])(?:async\s+)?function\s+([A-Za-z]\w*)\s*\(([^)]*)\)/gm))
+            add(m[1], m[2]);
+          for (const m of content.matchAll(/(?:const|let|var)\s+([A-Za-z]\w*)\s*=\s*(?:async\s+)?\(([^)]*)\)/g))
+            add(m[1], m[2]);
+        }
+        return sigs.slice(0, 8);
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const filesPayload = selected.map((f) => {
+        const content = contentMap[f.path] ?? "";
+        return {
+          projectId,
+          file: f.path,
+          type: f.type,
+          functions: extractFnSigs(content, f.path).map((fn) => ({ ...fn, file: f.path })),
+          imports: parseImports(content, f.path).slice(0, 10),
+          linesOfCode: content ? content.split("\n").length : 0,
+          createdAt: today,
+        };
+      });
+
+      const CHUNK_SIZE = 900;
+      const OVERLAP = 150;
+      type EmbChunk = { projectId: string; repoUrl: string; filePath: string; chunkIndex: number; content: string };
+      const chunks: EmbChunk[] = [];
+      for (const fileItem of filesPayload) {
+        const fileText = [
+          `FILE: ${fileItem.file}`,
+          `TYPE: ${fileItem.type}`,
+          `LINES: ${fileItem.linesOfCode}`,
+          ``,
+          `FUNCTIONS:`,
+          fileItem.functions.map((fn: { name: string; signature: string }) => `${fn.name} -> ${fn.signature}`).join("\n"),
+          ``,
+          `IMPORTS:`,
+          fileItem.imports.join(", "),
+        ].join("\n").trim();
+
+        let start = 0;
+        let index = 0;
+        while (start < fileText.length) {
+          chunks.push({ projectId, repoUrl: syntheticUrl, filePath: fileItem.file, chunkIndex: index, content: fileText.slice(start, start + CHUNK_SIZE) });
+          start += CHUNK_SIZE - OVERLAP;
+          index++;
+        }
+      }
+
+      if (!chunks.length) return;
+
+      const BATCH = 100;
+      const embeddings: number[][] = [];
+      for (let i = 0; i < chunks.length; i += BATCH) {
+        const inputs = chunks.slice(i, i + BATCH).map((c) => c.content);
+        const res = await fetch("https://api.openai.com/v1/embeddings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({ model: "text-embedding-3-small", input: inputs }),
+        });
+        if (!res.ok) { console.error("[analyze-zip] OpenAI error:", res.status); return; }
+        const data = (await res.json()) as { data: { embedding: number[] }[] };
+        for (const d of data.data) embeddings.push(d.embedding);
+      }
+
+      const db = await getDb();
+      const docs = chunks.map((c, i) => ({ ...c, embedding: embeddings[i] }));
+      await db.collection("codeSarthi").insertMany(docs);
+      console.log(`[analyze-zip] Stored ${docs.length} embedding chunks for project ${projectId}`);
+    } catch (embErr) {
+      console.error("[analyze-zip] Embedding error:", embErr);
+    }
+  })();
+
+  return NextResponse.json({ ...repository, projectId });
 }

@@ -1,0 +1,156 @@
+/**
+ * POST /api/chat  — save chat exchange to MongoDB OR call Bedrock AI
+ * GET  /api/chat  — fetch chat history for a projectId
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { bedrockClient, BEDROCK_MODEL_ID } from "@/lib/aws";
+import { getDb } from "@/lib/db";
+
+// ── GET: load chat history for a project ────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const projectId = req.nextUrl.searchParams.get("projectId");
+  if (!projectId) {
+    return NextResponse.json({ messages: [] });
+  }
+  try {
+    const db = await getDb();
+    const docs = await db
+      .collection("chatHistory")
+      .find({ projectId })
+      .sort({ timestamp: 1 })
+      .toArray();
+
+    // Convert DB rows → flat [{role,content,node}] pairs
+    const messages: { role: "user" | "assistant"; content: string; node?: string | null }[] = [];
+    for (const doc of docs) {
+      messages.push({ role: "user", content: doc.userMessage });
+      messages.push({ role: "assistant", content: doc.assistantMessage, node: doc.node ?? null });
+    }
+    return NextResponse.json({ messages });
+  } catch (err) {
+    console.error("[chat GET]", err);
+    return NextResponse.json({ messages: [] });
+  }
+}
+
+interface ChatRequestBody {
+  // Bedrock AI mode
+  message?: string;
+  repoContext?: string;
+  language?: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  // Chat history save mode (from SarthiChat n8n flow)
+  sessionId?: string;
+  projectId?: string;
+  userMessage?: string;
+  assistantMessage?: string;
+  node?: string | null;
+}
+
+export async function POST(req: NextRequest) {
+  const body = (await req.json()) as ChatRequestBody;
+
+  // ── History-save mode (called from SarthiChat after n8n response) ──────────
+  if (body.sessionId && body.userMessage && body.assistantMessage) {
+    try {
+      const db = await getDb();
+      await db.collection("chatHistory").insertOne({
+        sessionId: body.sessionId,
+        projectId: body.projectId ?? null,
+        userMessage: body.userMessage,
+        assistantMessage: body.assistantMessage,
+        node: body.node ?? null,
+        timestamp: new Date(),
+      });
+      return NextResponse.json({ ok: true });
+    } catch (err) {
+      console.error("[chat] MongoDB save error:", err);
+      return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    }
+  }
+
+  // ── Bedrock AI mode ────────────────────────────────────────────────────────
+  const { message, repoContext, language = "en", history = [] } = body;
+
+  if (!message?.trim()) {
+    return NextResponse.json({ error: "Missing message" }, { status: 400 });
+  }
+
+  const langLabel =
+    language === "hi" ? "Hindi (Devanagari script)" :
+    language === "ta" ? "Tamil" :
+    language === "te" ? "Telugu" :
+    language === "kn" ? "Kannada" :
+    language === "bn" ? "Bengali" :
+    language === "mr" ? "Marathi" :
+    language === "gu" ? "Gujarati" :
+    "English";
+
+  const systemPrompt = [
+    "You are Sarthi, an AI code guide helping Indian developers learn to read open-source codebases.",
+    "Explain code concepts in a friendly, beginner-friendly way.",
+    "Use India-familiar analogies wherever helpful: Aadhaar, UPI, IRCTC, cricket, chai stall, dhaba, college campus, NEET/JEE prep.",
+    repoContext ? `\nRepository context:\n${repoContext}` : "",
+    `\nAlways respond in ${langLabel}.`,
+    "Keep answers concise (4-7 sentences). If you refer to code, wrap it in backticks.",
+    "Never make up file names or function names that aren't in the context.",
+  ].filter(Boolean).join(" ");
+
+  // Keep the last 8 turns to stay within context limits
+  const safePrevious = history
+    .slice(-8)
+    .map((h) => ({ role: h.role, content: h.content }));
+
+  const messages = [
+    ...safePrevious,
+    { role: "user" as const, content: message },
+  ];
+
+  try {
+    const payload = JSON.stringify({
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages,
+    });
+
+    const cmd = new InvokeModelCommand({
+      modelId: BEDROCK_MODEL_ID,
+      contentType: "application/json",
+      accept: "application/json",
+      body: Buffer.from(payload),
+    });
+
+    const resp = await bedrockClient.send(cmd);
+    const result = JSON.parse(Buffer.from(resp.body).toString("utf-8"));
+    const reply: string =
+      result.content?.[0]?.text ??
+      "I couldn't generate a response. Please try again.";
+
+    // Save to MongoDB (non-blocking)
+    getDb().then((db) =>
+      db.collection("chatHistory").insertOne({
+        sessionId: null,
+        projectId: null,
+        userMessage: message,
+        assistantMessage: reply,
+        node: null,
+        timestamp: new Date(),
+      })
+    ).catch(() => {});
+
+    return NextResponse.json({ reply });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Bedrock call failed";
+    console.error("[/api/chat] Bedrock error:", msg);
+
+    // Graceful fallback — never leave the user with a broken UI
+    return NextResponse.json({
+      reply:
+        "Bedrock is not reachable right now. Please check that AWS credentials and region are set correctly in .env.local, and that the Bedrock model is enabled in your AWS account.",
+      fallback: true,
+    });
+  }
+}
