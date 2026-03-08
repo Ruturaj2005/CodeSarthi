@@ -337,6 +337,13 @@ export default function ExplorerPage() {
                 language={language}
                 onLanguageChange={setLanguage}
                 projectId={repo.projectId}
+                repoContext={repo.nodes
+                  .slice(0, 25)
+                  .map(
+                    (n) =>
+                      `[${n.file}]\n${n.description}\nFunctions: ${n.functions.join(", ")}\n\n${n.codePreview.slice(0, 600)}`
+                  )
+                  .join("\n\n---\n\n")}
               />
             )}
             {rightPanel === "score" && (

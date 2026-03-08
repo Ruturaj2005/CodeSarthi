@@ -16,12 +16,13 @@ Language rules:
 - Technical terms (file names, function names, API endpoints) stay in English even in non-English responses.
 
 Answer rules:
-1. Only answer from the provided context. Never use outside knowledge.
-2. If no relevant context exists, set output to: "Not found in this codebase." and node to null.
-3. Give a summarized but complete answer — 3 to 5 sentences. Cover what it does, which file/function handles it, and how it fits into the overall project architecture. Name specific files, functions, or patterns. Do NOT pad with filler — every sentence must add understanding.
-4. No bullet points, no lists, no headings, no code blocks. Plain prose only.
-5. Do not mention databases, vectors, embeddings, or tools.
-6. For node: use the exact filename if the answer is about one specific file, otherwise null.
+1. Use the provided codebase context AND the conversation history to answer the question.
+2. For follow-up questions (like "explain more", "elaborate", "easy language"), use what was already discussed in the conversation history — do NOT say "Not found".
+3. If a question is completely unrelated to the codebase and there is no relevant context or history, set output to: "Not found in this codebase." and node to null.
+4. Give a summarized but complete answer — 3 to 5 sentences. Cover what it does, which file/function handles it, and how it fits into the overall project architecture. Name specific files, functions, or patterns. Do NOT pad with filler — every sentence must add understanding.
+5. No bullet points, no lists, no headings, no code blocks. Plain prose only.
+6. Do not mention databases, vectors, embeddings, or tools.
+7. For node: use the exact filename if the answer is about one specific file, otherwise null.
 
 You MUST respond with ONLY this JSON (no other text, no markdown, no wrappers):
 {"output":"your answer here","node":"filename.ext or null"}`;
@@ -39,7 +40,7 @@ You MUST respond with ONLY this JSON (no other text, no markdown, no wrappers):
 {"output":"your explanation here","node":"filename.ext"}`;
 
 export async function POST(req: NextRequest) {
-  const { msg, projectId, sessionId, nodeMode, language } = await req.json();
+  const { msg, projectId, sessionId, nodeMode, language, repoContext, clientHistory } = await req.json();
 
   const activeSystemPrompt = nodeMode ? NODE_EXPLAIN_PROMPT : SYSTEM_PROMPT;
 
@@ -90,37 +91,53 @@ export async function POST(req: NextRequest) {
     };
     if (projectId) vectorSearchStage.filter = { projectId };
 
-    const chunks = await db
-      .collection("codeSarthi")
-      .aggregate([
-        { $vectorSearch: vectorSearchStage },
-        { $project: { _id: 0, filePath: 1, content: 1 } },
-      ])
-      .toArray();
+    // Wrap in try/catch — Atlas vector index may not exist yet
+    let chunks: Array<{ filePath: string; content: string }> = [];
+    try {
+      chunks = (await db
+        .collection("codeSarthi")
+        .aggregate([
+          { $vectorSearch: vectorSearchStage },
+          { $project: { _id: 0, filePath: 1, content: 1 } },
+        ])
+        .toArray()) as Array<{ filePath: string; content: string }>;
+    } catch (vsErr) {
+      console.warn("[chatbot] Vector search unavailable:", (vsErr as Error).message);
+    }
 
-    // 3. Fetch last 10 messages of this session for memory
+    // 3. Conversation history — prefer client-sent history (always fresh) over MongoDB
+    const clientMsgs: Array<{ role: string; content: string }> = Array.isArray(clientHistory) ? clientHistory : [];
     const history =
-      sessionId
-        ? await db
-            .collection("chatHistory")
-            .find({ sessionId })
-            .sort({ timestamp: -1 })
-            .limit(10)
-            .toArray()
-            .then((docs) => docs.reverse())
-        : [];
+      clientMsgs.length > 0
+        ? clientMsgs
+        : sessionId
+          ? await db
+              .collection("chatHistory")
+              .find({ sessionId })
+              .sort({ timestamp: -1 })
+              .limit(10)
+              .toArray()
+              .then((docs) => docs.reverse().map((d) => ({ role: "user", content: d.userMessage, assistantContent: d.assistantMessage })))
+          : [];
 
-    // 4. Build context string from retrieved chunks
+    // 4. Build context string — priority: vector chunks > inline repoContext > nothing
     const context =
       chunks.length > 0
         ? chunks.map((c) => `[${c.filePath}]\n${c.content}`).join("\n\n---\n\n")
-        : "No relevant context found in the codebase.";
+        : typeof repoContext === "string" && repoContext.trim()
+          ? repoContext.trim()
+          : "No relevant context found in the codebase.";
 
     // 5. Build conversation history for Gemini format
-    const historyContents = history.flatMap((h) => [
-      { role: "user", parts: [{ text: h.userMessage }] },
-      { role: "model", parts: [{ text: h.assistantMessage }] },
-    ]);
+    const historyContents = clientMsgs.length > 0
+      ? clientMsgs.map((m) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.content }],
+        }))
+      : (history as Array<{ userMessage?: string; assistantMessage?: string }>).flatMap((h) => [
+          { role: "user", parts: [{ text: h.userMessage ?? "" }] },
+          { role: "model", parts: [{ text: h.assistantMessage ?? "" }] },
+        ]);
 
     const userMessage = `Language: ${language ?? "en"}
 

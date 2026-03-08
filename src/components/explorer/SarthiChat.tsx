@@ -21,6 +21,7 @@ interface SarthiChatProps {
   onLanguageChange: (lang: Language) => void;
   projectId?: string;
   initialMessages?: Message[];
+  repoContext?: string;
 }
 
 const SUGGESTIONS: Record<string, string[]> = {
@@ -99,7 +100,7 @@ function renderMarkdown(text: string) {
     .replace(/\n/g, "<br/>");
 }
 
-export default function SarthiChat({ language, onLanguageChange, projectId, initialMessages }: SarthiChatProps) {
+export default function SarthiChat({ language, onLanguageChange, projectId, initialMessages, repoContext }: SarthiChatProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -174,6 +175,11 @@ export default function SarthiChat({ language, onLanguageChange, projectId, init
           projectId: projectId ?? "",
           sessionId: sessionIdRef.current,
           language,
+          repoContext: repoContext ?? "",
+          clientHistory: messages.slice(-10).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
         }),
       });
 
