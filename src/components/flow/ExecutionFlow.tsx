@@ -1,17 +1,107 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, SkipForward, SkipBack, ChevronRight, ChevronDown,
   Terminal, Zap, Clock, Shield, AlertTriangle,
-  Globe, BookOpen, Package, Database,
+  Globe, BookOpen, Package, Database, Trophy, Star, Target, Award, Flame, CheckCircle2, HelpCircle,
 } from "lucide-react";
 import { MOCK_REPO } from "@/lib/mockData";
 import { repoStore } from "@/lib/repoStore";
-import type { ExecutionFlow, FlowStep, Repository, Language } from "@/lib/types";
+import type { ExecutionFlow, FlowStep, Repository, Language, GraphNode } from "@/lib/types";
 import { NODE_COLORS, LANGUAGE_LABELS } from "@/lib/types";
 
-const LANGS: Language[] = ["en", "hi", "ta", "te"];
+const TYPE_ORDER = ["entry", "page", "component", "controller", "service", "model", "utility", "config", "style", "external"];
+
+const LEVEL_GROUPS = [
+  { id: 1, name: "Entry & Config", types: ["entry", "config"], color: "#F5A623", y: 0 },
+  { id: 2, name: "UI Layer", types: ["page", "component", "style"], color: "#3B82F6", y: 1 },
+  { id: 3, name: "Business Logic", types: ["controller", "service"], color: "#A855F7", y: 2 },
+  { id: 4, name: "Data Layer", types: ["model"], color: "#22C55E", y: 3 },
+  { id: 5, name: "Utilities", types: ["utility", "external"], color: "#6B7280", y: 4 },
+];
+
+interface GameStats {
+  totalXP: number;
+  level: number;
+  stepsCompleted: number;
+  achievements: string[];
+  streak: number;
+  lastVisit: string;
+  completedFlows: string[];
+  challengesCorrect: number;
+  challengesTotal: number;
+}
+
+const ACHIEVEMENTS = [
+  { id: "first_step", name: "First Step", desc: "Complete your first flow step", icon: "🎯", xp: 10 },
+  { id: "flow_master", name: "Flow Master", desc: "Complete an entire flow", icon: "🏆", xp: 50 },
+  { id: "polyglot", name: "Polyglot", desc: "Switch between 3 languages", icon: "🌍", xp: 30 },
+  { id: "speed_runner", name: "Speed Runner", desc: "Complete 5 steps in under 2 minutes", icon: "⚡", xp: 40 },
+  { id: "challenger", name: "Challenger", desc: "Answer 3 challenge questions correctly", icon: "🧠", xp: 60 },
+  { id: "week_streak", name: "Week Warrior", desc: "7 day streak", icon: "🔥", xp: 100 },
+  { id: "explorer", name: "Code Explorer", desc: "View 20+ files", icon: "🗺️", xp: 70 },
+];
+
+function getStatsFromStorage(): GameStats {
+  if (typeof window === "undefined") return { totalXP: 0, level: 1, stepsCompleted: 0, achievements: [], streak: 0, lastVisit: new Date().toISOString(), completedFlows: [], challengesCorrect: 0, challengesTotal: 0 };
+  const stored = localStorage.getItem("codesarthi_game_stats");
+  if (!stored) return { totalXP: 0, level: 1, stepsCompleted: 0, achievements: [], streak: 0, lastVisit: new Date().toISOString(), completedFlows: [], challengesCorrect: 0, challengesTotal: 0 };
+  return JSON.parse(stored);
+}
+
+function saveStatsToStorage(stats: GameStats) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("codesarthi_game_stats", JSON.stringify(stats));
+}
+
+function calculateLevel(xp: number): number {
+  return Math.floor(Math.sqrt(xp / 10)) + 1;
+}
+
+function xpForNextLevel(currentLevel: number): number {
+  return currentLevel * currentLevel * 10;
+}
+
+function inferEdgeType(fromType: string, toType: string): string {
+  if (toType === "model") return "DB_QUERY";
+  if (fromType === "entry" || fromType === "page") return "HTTP_CALL";
+  if (toType === "service" || fromType === "controller") return "FUNCTION_CALL";
+  return "FUNCTION_CALL";
+}
+
+function buildFlowFromNodes(nodes: GraphNode[]): ExecutionFlow[] {
+  if (nodes.length === 0) return [];
+  const sorted = [...nodes].sort(
+    (a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type)
+  );
+  const steps: FlowStep[] = sorted.map((n, i) => ({
+    id: `fs${i + 1}`,
+    step: i + 1,
+    title: n.label,
+    nodeId: n.id,
+    description: n.description,
+    functionName: n.functions[0] ?? "process()",
+    language: n.file.endsWith(".py")
+      ? "python"
+      : n.file.endsWith(".ts") || n.file.endsWith(".tsx")
+      ? "typescript"
+      : "javascript",
+    codeSnippet: n.codePreview.split("\n").slice(0, 14).join("\n"),
+    edgeType: i < sorted.length - 1 ? inferEdgeType(n.type, sorted[i + 1].type) : "RETURN",
+    sarthiAlert: i > 0 && (i % 5 === 0 || n.type === "controller" || n.type === "model"),
+    sarthiAlertReason: i % 5 === 0 ? "This is a key architectural transition. Take time to understand how data flows." : n.type === "controller" ? "Controllers handle business logic — this is where the magic happens!" : "Data models are the foundation. Understanding this unlocks the entire system.",
+  }));
+  return [{
+    id: "full-flow",
+    title: "🎮 Adventure Through Codebase",
+    description: "All files ordered by architectural layer — complete levels to earn XP!",
+    icon: "🗺️",
+    steps,
+  }];
+}
+
+const LANGS: Language[] = ["en", "hi", "mr", "ta", "te", "kn", "bn", "gu"];
 
 const EDGE_CHIP: Record<string, { bg: string; color: string; label: string }> = {
   HTTP_CALL:     { bg: "rgba(59,130,246,0.18)",  color: "#60A5FA", label: "HTTP" },
@@ -74,6 +164,14 @@ function FlowNodeCard({ step, isActive, isDone, isUpcoming, isSarthi, index, tot
       {index < total - 1 && (
         <div className="absolute left-1/2 -translate-x-px" style={{ top: "100%", width: 2, height: 34, background: isDone ? "#6E56CF" : "rgba(255,255,255,0.06)" }} />
       )}
+      {isActive && index < total - 1 && (
+        <motion.div
+          className="absolute left-1/2 -translate-x-1/2 rounded-full z-10"
+          style={{ width: 7, height: 7, top: "100%", background: "#A78BFA", boxShadow: "0 0 10px #A78BFA, 0 0 20px rgba(167,139,250,0.5)" }}
+          animate={{ y: [2, 30], opacity: [1, 0] }}
+          transition={{ duration: 1.0, repeat: Infinity, ease: "easeIn", repeatDelay: 0.6 }}
+        />
+      )}
       <AnimatePresence>
         {isActive && index < total - 1 && (
           <motion.div
@@ -116,8 +214,8 @@ function FlowNodeCard({ step, isActive, isDone, isUpcoming, isSarthi, index, tot
   );
 }
 
-function StepDetail({ step, stepIdx, total, lang, nextStep }: {
-  step: FlowStep; stepIdx: number; total: number; lang: Language; nextStep?: FlowStep;
+function StepDetail({ step, stepIdx, total, lang, nextStep, aiSummary, isLoadingSummary }: {
+  step: FlowStep; stepIdx: number; total: number; lang: Language; nextStep?: FlowStep; aiSummary?: string; isLoadingSummary?: boolean;
 }) {
   const narration = step.narration?.[lang] ?? step.narration?.["en"] ?? step.description;
   const receiveEntries = Object.entries(step.receives ?? {});
@@ -151,10 +249,22 @@ function StepDetail({ step, stepIdx, total, lang, nextStep }: {
           </motion.div>
         )}
 
-        {/* Description */}
+        {/* Description / AI Summary */}
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "#6B6B80" }}>WHAT IT&apos;S DOING</p>
-          <p className="text-[12px] leading-relaxed" style={{ color: "#C9D1D9" }}>{narration}</p>
+          <div className="flex items-center gap-2 mb-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#6B6B80" }}>WHAT IT&apos;S DOING</p>
+            {isLoadingSummary && (
+              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.1 }} className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#A78BFA" }} />
+                <span className="text-[9px]" style={{ color: "#A78BFA" }}>Sarthi translating…</span>
+              </motion.div>
+            )}
+          </div>
+          <AnimatePresence mode="wait">
+            <motion.p key={(aiSummary ?? narration).slice(0, 30)} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="text-[12px] leading-relaxed" style={{ color: "#C9D1D9" }}>
+              {aiSummary ?? narration}
+            </motion.p>
+          </AnimatePresence>
         </div>
 
         {/* Analogy */}
@@ -249,25 +359,157 @@ export default function ExecutionFlowViewer() {
   const [playing, setPlaying] = useState(false);
   const [lang, setLang] = useState<Language>("en");
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [stepSummaries, setStepSummaries] = useState<Record<string, Record<string, string>>>({});
+  const [loadingSummary, setLoadingSummary] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    const stored = repoStore.load();
-    const r = stored ?? MOCK_REPO;
-    setRepo(r);
-    if (r.flows.length > 0) setFlows(r.flows);
-  }, []);
-
+  
+  // Gamification state
+  const [gameStats, setGameStats] = useState<GameStats>(getStatsFromStorage());
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
+  const [showAchievement, setShowAchievement] = useState<string | null>(null);
+  const [showChallenge, setShowChallenge] = useState(false);
+  const [challengeAnswer, setChallengeAnswer] = useState<string>("");
+  const [languagesSwitched, setLanguagesSwitched] = useState<Set<string>>(new Set(["en"]));
+  const sessionStartRef = useRef<number>(Date.now());
+  const stepsCompletedThisSessionRef = useRef<number>(0);
+  
+  // Compute flow and step — must be before useEffect/useCallback per Rules of Hooks
   const flow = flows[activeFlowIdx] ?? flows[0];
   const step = flow?.steps[stepIdx];
   const nextStep = flow?.steps[stepIdx + 1];
   const isFirst = stepIdx === 0;
   const isLast = !flow || stepIdx === flow.steps.length - 1;
+  
+  const currentLevel = useMemo(() => {
+    if (!step) return null;
+    const node = repo.nodes?.find(n => n.id === step.nodeId);
+    if (!node) return null;
+    return LEVEL_GROUPS.find(lg => lg.types.includes(node.type));
+  }, [step, repo.nodes]);
+  
+  const challenge = useMemo(() => {
+    if (!step || !showChallenge) return null;
+    const challenges = [
+      { q: "What is the primary responsibility of this file?", options: ["Handle UI", "Business logic", "Data storage", "Configuration"], correct: step.nodeId.includes("controller") ? 1 : step.nodeId.includes("model") ? 2 : 0 },
+      { q: "What type of data does this component receive?", options: ["User input", "API response", "Database query result", "File content"], correct: 1 },
+      { q: "Where does the output of this file typically go?", options: ["User interface", "Database", "Next file in flow", "External API"], correct: 2 },
+    ];
+    return challenges[Math.floor(Math.random() * challenges.length)];
+  }, [step, showChallenge]);
+
+  useEffect(() => {
+    const stored = repoStore.load();
+    const r = stored ?? MOCK_REPO;
+    setRepo(r);
+    if (r.nodes && r.nodes.length > 0) {
+      setFlows(buildFlowFromNodes(r.nodes));
+    } else if (r.flows.length > 0) {
+      setFlows(r.flows);
+    }
+    
+    // Update streak
+    const stats = getStatsFromStorage();
+    const today = new Date().toISOString().split("T")[0];
+    const lastVisit = new Date(stats.lastVisit).toISOString().split("T")[0];
+    const daysDiff = Math.floor((new Date(today).getTime() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24));
+    if (daysDiff === 1) {
+      stats.streak += 1;
+      if (stats.streak === 7 && !stats.achievements.includes("week_streak")) {
+        unlockAchievement("week_streak", stats);
+      }
+    } else if (daysDiff > 1) {
+      stats.streak = 1;
+    }
+    stats.lastVisit = new Date().toISOString();
+    setGameStats(stats);
+    saveStatsToStorage(stats);
+  }, []);
+  
+  const unlockAchievement = useCallback((id: string, stats: GameStats) => {
+    if (stats.achievements.includes(id)) return stats;
+    const achievement = ACHIEVEMENTS.find(a => a.id === id);
+    if (!achievement) return stats;
+    stats.achievements.push(id);
+    stats.totalXP += achievement.xp;
+    stats.level = calculateLevel(stats.totalXP);
+    setShowAchievement(id);
+    setTimeout(() => setShowAchievement(null), 4000);
+    return stats;
+  }, []);
+  
+  const awardXP = useCallback((amount: number, reason: string) => {
+    setGameStats(prev => {
+      const updated = { ...prev, totalXP: prev.totalXP + amount, level: calculateLevel(prev.totalXP + amount) };
+      saveStatsToStorage(updated);
+      return updated;
+    });
+  }, []);
 
   const goto = useCallback((idx: number) => {
     if (!flow) return;
-    setStepIdx(Math.max(0, Math.min(idx, flow.steps.length - 1)));
-  }, [flow]);
+    const newIdx = Math.max(0, Math.min(idx, flow.steps.length - 1));
+    
+    // Mark previous step as completed if advancing
+    if (newIdx > stepIdx && flow.steps[stepIdx]) {
+      const currentStep = flow.steps[stepIdx];
+      if (!completedSteps.has(currentStep.id)) {
+        setCompletedSteps(prev => new Set([...prev, currentStep.id]));
+        stepsCompletedThisSessionRef.current += 1;
+        
+        // Award XP
+        const xp = currentStep.sarthiAlert ? 15 : 10;
+        awardXP(xp, `Completed ${currentStep.title}`);
+        
+        // Update stats
+        setGameStats(prev => {
+          const updated = { ...prev, stepsCompleted: prev.stepsCompleted + 1 };
+          
+          // Check achievements
+          if (updated.stepsCompleted === 1 && !updated.achievements.includes("first_step")) {
+            unlockAchievement("first_step", updated);
+          }
+          if (updated.stepsCompleted >= 20 && !updated.achievements.includes("explorer")) {
+            unlockAchievement("explorer", updated);
+          }
+          
+          saveStatsToStorage(updated);
+          return updated;
+        });
+        
+        // Speed runner achievement
+        const elapsed = Date.now() - sessionStartRef.current;
+        if (stepsCompletedThisSessionRef.current === 5 && elapsed < 120000) {
+          setGameStats(prev => {
+            const updated = { ...prev };
+            if (!updated.achievements.includes("speed_runner")) {
+              unlockAchievement("speed_runner", updated);
+            }
+            return updated;
+          });
+        }
+        
+        // Random challenge
+        if (Math.random() < 0.25 && currentStep.sarthiAlert) {
+          setShowChallenge(true);
+        }
+      }
+      
+      // Flow completion
+      if (newIdx === flow.steps.length - 1 && !gameStats.completedFlows.includes(flow.id)) {
+        setGameStats(prev => {
+          const updated = { ...prev, completedFlows: [...prev.completedFlows, flow.id] };
+          if (!updated.achievements.includes("flow_master")) {
+            unlockAchievement("flow_master", updated);
+          }
+          saveStatsToStorage(updated);
+          return updated;
+        });
+        awardXP(50, "Flow completed!");
+      }
+    }
+    
+    setStepIdx(newIdx);
+  }, [flow, stepIdx, completedSteps, gameStats, awardXP, unlockAchievement]);
 
   useEffect(() => {
     if (playing && flow) {
@@ -284,6 +526,62 @@ export default function ExecutionFlowViewer() {
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [playing, flow]);
+
+  // Fetch AI summary in selected language when active step or language changes
+  useEffect(() => {
+    if (!step) return;
+    if (stepSummaries[step.id]?.[lang]) return;
+    if (step.narration?.[lang]) {
+      setStepSummaries(prev => ({ ...prev, [step.id]: { ...(prev[step.id] ?? {}), [lang]: step.narration![lang] } }));
+      return;
+    }
+    
+    // Track language switches for polyglot achievement
+    setLanguagesSwitched(prev => {
+      const updated = new Set([...prev, lang]);
+      if (updated.size >= 3 && !gameStats.achievements.includes("polyglot")) {
+        setGameStats(gs => {
+          const u = { ...gs };
+          unlockAchievement("polyglot", u);
+          saveStatsToStorage(u);
+          return u;
+        });
+      }
+      return updated;
+    });
+    
+    const repoContext = [
+      `File: ${step.title}`,
+      `Function: ${step.functionName}`,
+      step.description,
+      step.codeSnippet ? `Code:\n${step.codeSnippet.slice(0, 800)}` : "",
+    ].filter(Boolean).join("\n\n");
+    setLoadingSummary(true);
+    fetch("/api/chatbot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        msg: `In 2-3 sentences, explain what "${step.functionName}" in "${step.title}" does in this data flow. What data does it receive and what does it output? Be concise and specific.`,
+        nodeMode: true,
+        language: lang,
+        repoContext,
+        projectId: repo.id || "temp",
+        sessionId: `flow_${Date.now()}`,
+      }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.reply) {
+          setStepSummaries(prev => ({ ...prev, [step.id]: { ...(prev[step.id] ?? {}), [lang]: data.reply } }));
+        }
+      })
+      .catch(err => {
+        console.error("Translation failed:", err);
+        setStepSummaries(prev => ({ ...prev, [step.id]: { ...(prev[step.id] ?? {}), [lang]: step.description } }));
+      })
+      .finally(() => setLoadingSummary(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step?.id, lang]);
 
   const handleFlowChange = (idx: number) => {
     setActiveFlowIdx(idx);
@@ -306,18 +604,126 @@ export default function ExecutionFlowViewer() {
       </div>
     );
   }
-
+  
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Flow selector bar */}
+    <div className="h-full flex flex-col overflow-hidden relative">
+      {/* Achievement popup */}
+      <AnimatePresence>
+        {showAchievement && (() => {
+          const ach = ACHIEVEMENTS.find(a => a.id === showAchievement);
+          if (!ach) return null;
+          return (
+            <motion.div
+              key="achievement"
+              initial={{ opacity: 0, y: -50, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -50, scale: 0.8 }}
+              className="absolute top-20 left-1/2 -translate-x-1/2 z-50 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-2xl"
+              style={{ background: "linear-gradient(135deg, #6E56CF, #00D2A0)", border: "2px solid #FFD700" }}
+            >
+              <div className="text-4xl">{ach.icon}</div>
+              <div>
+                <p className="text-sm font-bold text-white">Achievement Unlocked!</p>
+                <p className="text-xs text-white/90">{ach.name} — +{ach.xp} XP</p>
+              </div>
+              <Trophy className="w-6 h-6 text-yellow-300" />
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+      
+      {/* Challenge modal */}
+      <AnimatePresence>
+        {showChallenge && challenge && (
+          <motion.div
+            key="challenge"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }}
+            onClick={() => setShowChallenge(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-[480px] p-6 rounded-2xl"
+              style={{ background: "#161620", border: "2px solid #6E56CF" }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <HelpCircle className="w-6 h-6" style={{ color: "#6E56CF" }} />
+                <h3 className="text-lg font-bold" style={{ color: "#E8E8F0" }}>💡 Challenge Question</h3>
+              </div>
+              <p className="text-sm mb-4" style={{ color: "#C9D1D9" }}>{challenge.q}</p>
+              <div className="space-y-2 mb-4">
+                {challenge.options.map((opt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      const isCorrect = i === challenge.correct;
+                      setGameStats(prev => {
+                        const updated = { ...prev, challengesTotal: prev.challengesTotal + 1 };
+                        if (isCorrect) {
+                          updated.challengesCorrect += 1;
+                          updated.totalXP += 20;
+                          updated.level = calculateLevel(updated.totalXP);
+                          if (updated.challengesCorrect >= 3 && !updated.achievements.includes("challenger")) {
+                            unlockAchievement("challenger", updated);
+                          }
+                        }
+                        saveStatsToStorage(updated);
+                        return updated;
+                      });
+                      setChallengeAnswer(isCorrect ? "correct" : "wrong");
+                      setTimeout(() => { setShowChallenge(false); setChallengeAnswer(""); }, 1500);
+                    }}
+                    className="w-full px-4 py-2.5 rounded-lg text-left text-sm transition-all"
+                    style={{
+                      background: challengeAnswer === "" ? "rgba(255,255,255,0.05)" : i === challenge.correct ? "rgba(0,210,160,0.15)" : challengeAnswer === "wrong" && i === parseInt(challengeAnswer) ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.05)",
+                      border: `1px solid ${challengeAnswer === "" ? "rgba(255,255,255,0.1)" : i === challenge.correct ? "#00D2A0" : "rgba(255,255,255,0.1)"}`,
+                      color: "#E8E8F0",
+                    }}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              {challengeAnswer && (
+                <motion.p
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-center text-sm font-bold"
+                  style={{ color: challengeAnswer === "correct" ? "#00D2A0" : "#F87171" }}
+                >
+                  {challengeAnswer === "correct" ? "🎉 Correct! +20 XP" : "❌ Not quite, but keep learning!"}
+                </motion.p>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* Flow selector bar with game stats */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b flex-shrink-0 gap-3" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(17,17,24,0.9)" }}>
-        <div className="flex items-center gap-2.5 min-w-0 flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(110,86,207,0.15)" }}>
-            <Zap className="w-4 h-4" style={{ color: "#6E56CF" }} />
+            <Trophy className="w-4 h-4" style={{ color: "#FFD700" }} />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-bold leading-none" style={{ color: "#E8E8F0" }}>FlowViz</h2>
-            <p className="text-[10px] mt-0.5" style={{ color: "#6B6B80" }}>Execution flow visualiser</p>
+            <h2 className="text-sm font-bold leading-none" style={{ color: "#E8E8F0" }}>🎮 FlowViz Adventure</h2>
+            <p className="text-[10px] mt-0.5" style={{ color: "#6B6B80" }}>Level {gameStats.level} • {gameStats.totalXP} XP</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: "rgba(245,166,35,0.15)", border: "1px solid rgba(245,166,35,0.3)" }}>
+              <Flame className="w-3 h-3" style={{ color: "#F5A623" }} />
+              <span className="text-[10px] font-bold" style={{ color: "#F5A623" }}>{gameStats.streak}</span>
+            </div>
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: "rgba(0,210,160,0.15)", border: "1px solid rgba(0,210,160,0.3)" }}>
+              <Star className="w-3 h-3" style={{ color: "#00D2A0" }} />
+              <span className="text-[10px] font-bold" style={{ color: "#00D2A0" }}>{completedSteps.size}/{flow?.steps.length || 0}</span>
+            </div>
           </div>
         </div>
 
@@ -364,12 +770,22 @@ export default function ExecutionFlowViewer() {
         </div>
       </div>
 
-      {/* Step progress dots */}
-      {flow && (
-        <div className="flex items-center gap-3 border-b flex-shrink-0 px-4 py-2.5" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(17,17,24,0.6)" }}>
-          <StepDots steps={flow.steps} current={stepIdx} onGoto={(i) => { goto(i); setPlaying(false); }} />
-          <span className="text-[10px] font-mono flex-shrink-0" style={{ color: "#6B6B80" }}>{stepIdx + 1}/{flow.steps.length}</span>
-          <Clock className="w-3 h-3 flex-shrink-0" style={{ color: "#6B6B80" }} />
+      {/* Level indicator + progress */}
+      {flow && currentLevel && (
+        <div className="flex items-center justify-between border-b flex-shrink-0 px-4 py-2.5" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(17,17,24,0.6)" }}>
+          <div className="flex items-center gap-2">
+            <div className="px-2.5 py-1 rounded-lg text-[10px] font-bold" style={{ background: `${currentLevel.color}20`, border: `1px solid ${currentLevel.color}50`, color: currentLevel.color }}>
+              LEVEL {currentLevel.id}: {currentLevel.name.toUpperCase()}
+            </div>
+            <span className="text-[10px]" style={{ color: "#6B6B80" }}>Step {stepIdx + 1}/{flow.steps.length}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-1 mx-4">
+            <StepDots steps={flow.steps} current={stepIdx} onGoto={(i) => { goto(i); setPlaying(false); }} />
+          </div>
+          <div className="flex items-center gap-2">
+            {completedSteps.has(step?.id || "") && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "#00D2A0" }} />}
+            <Clock className="w-3 h-3 flex-shrink-0" style={{ color: "#6B6B80" }} />
+          </div>
         </div>
       )}
 
@@ -407,7 +823,7 @@ export default function ExecutionFlowViewer() {
         {/* Step detail panel */}
         <div className="w-80 flex-shrink-0 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-hidden">
-            {step && <StepDetail step={step} stepIdx={stepIdx} total={flow.steps.length} lang={lang} nextStep={nextStep} />}
+            {step && <StepDetail step={step} stepIdx={stepIdx} total={flow.steps.length} lang={lang} nextStep={nextStep} aiSummary={stepSummaries[step.id]?.[lang]} isLoadingSummary={loadingSummary} />}
           </div>
 
           {/* Playback controls */}
@@ -441,7 +857,7 @@ export default function ExecutionFlowViewer() {
         <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 border-t" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(17,17,24,0.95)", minHeight: 44 }}>
           <BookOpen className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#6E56CF" }} />
           <p className="flex-1 text-[11px] leading-snug line-clamp-2" style={{ color: "#9090A0" }}>
-            {step.narration?.[lang] ?? step.description}
+            {stepSummaries[step.id]?.[lang] ?? step.narration?.[lang] ?? step.description}
           </p>
           <div className="flex items-center gap-0.5 flex-shrink-0">
             {LANGS.map((l) => (

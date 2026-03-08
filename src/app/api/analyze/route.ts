@@ -489,10 +489,18 @@ function generateFlow(
   repoName: string,
   framework: string
 ): ExecutionFlow[] {
-  const pick = (t: NodeType) => nodes.find((n) => n.type === t);
-  const seq: NodeType[] = ["entry", "page", "controller", "service", "model"];
-  const selected = seq.map(pick).filter(Boolean) as GraphNode[];
+  const TYPE_ORDER: NodeType[] = ["entry", "page", "component", "controller", "service", "model", "utility", "config", "style", "external"];
+  const selected = [...nodes].sort(
+    (a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type)
+  );
   if (selected.length < 2) return [];
+
+  function inferEdge(fromType: NodeType, toType: NodeType): string {
+    if (toType === "model") return "DB_QUERY";
+    if (fromType === "entry" || fromType === "page") return "HTTP_CALL";
+    if (toType === "service" || fromType === "controller") return "FUNCTION_CALL";
+    return "FUNCTION_CALL";
+  }
 
   const steps: FlowStep[] = selected.map((n, i) => ({
     id: `fs${i + 1}`,
@@ -507,6 +515,7 @@ function generateFlow(
       ? "typescript"
       : "javascript",
     codeSnippet: n.codePreview.split("\n").slice(0, 14).join("\n"),
+    edgeType: i < selected.length - 1 ? inferEdge(n.type, selected[i + 1].type) : "RETURN",
   }));
 
   return [
