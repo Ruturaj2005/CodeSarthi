@@ -43,7 +43,7 @@ export default function ImportPage() {
               color: "#A78BFA",
             }}
           >
-            STEP 1 OF 1 — PASTE URL
+            IMPORT PROJECT
           </span>
           <h1
             className="text-3xl md:text-4xl font-bold mb-3"
@@ -52,7 +52,7 @@ export default function ImportPage() {
             Analyze any repository
           </h1>
           <p className="text-base" style={{ color: "#6B6B80" }}>
-            Paste a GitHub URL, upload a ZIP, or connect your account. We handle the rest.
+            Paste a GitHub URL or upload a ZIP archive. We handle the rest.
           </p>
         </motion.div>
 

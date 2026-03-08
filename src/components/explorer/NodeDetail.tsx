@@ -1,6 +1,6 @@
 "use client";
-import { motion,AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
 import { X, ExternalLink, FileCode, GitBranch, Layers, Zap, Link2 } from "lucide-react";
 import { NODE_COLORS } from "@/lib/types";
 import type { GraphNode, GraphEdge, Language } from "@/lib/types";
@@ -10,6 +10,7 @@ interface NodeDetailProps {
   node: GraphNode | null;
   onClose: () => void;
   language: Language;
+  projectId?: string;
   edges?: GraphEdge[];
   allNodes?: GraphNode[];
   onExploreNode?: (node: GraphNode) => void;
@@ -22,19 +23,29 @@ const COMPLEXITY_COLORS = {
   high: { bg: "rgba(255,77,109,0.12)", text: "#FF4D6D", border: "rgba(255,77,109,0.3)" },
 };
 
-const AI_EXPLANATIONS: Record<Language, (node: GraphNode) => string> = {
-  en: (n) => `This \`${n.file}\` ${n.type === "model" ? "defines the data structure for" : n.type === "controller" ? "handles HTTP requests for" : n.type === "service" ? "contains business logic for" : "manages"} the ${n.label} functionality. It contains ${n.linesOfCode} lines of code with ${n.complexity} complexity.`,
-  hi: (n) => `यह \`${n.file}\` file ${n.label} functionality को ${n.type === "model" ? "data structure define करती है" : n.type === "controller" ? "HTTP requests handle करती है" : n.type === "service" ? "business logic contain करती है" : "manage करती है"}। इसमें ${n.linesOfCode} lines of code हैं।`,
-  ta: (n) => `இந்த \`${n.file}\` கோப்பு ${n.label} செயல்பாட்டை ${n.type === "controller" ? "HTTP requests கையாளுகிறது" : "நிர்வகிக்கிறது"}. இதில் ${n.linesOfCode} lines of code உள்ளன.`,
-  te: (n) => `ఈ \`${n.file}\` ఫైల్ ${n.label} functionality ని ${n.type === "controller" ? "HTTP requests handle చేస్తుంది" : "manage చేస్తుంది"}. ఇందులో ${n.linesOfCode} lines of code ఉన్నాయి.`,
-  kn: (n) => `ಈ \`${n.file}\` ಫೈಲ್ ${n.label} functionality ಅನ್ನು manage ಮಾಡುತ್ತದೆ. ಇದರಲ್ಲಿ ${n.linesOfCode} lines of code ಇದೆ.`,
-  bn: (n) => `এই \`${n.file}\` ফাইলটি ${n.label} functionality পরিচালনা করে। এতে ${n.linesOfCode} lines of code রয়েছে।`,
-  mr: (n) => `हे \`${n.file}\` file ${n.label} functionality manage करते। यात ${n.linesOfCode} lines of code आहेत.`,
-  gu: (n) => `આ \`${n.file}\` ફાઈલ ${n.label} functionality manage કરે છે. આમાં ${n.linesOfCode} lines of code છે.`,
-};
-
-export default function NodeDetail({ node, onClose, language, edges = [], allNodes = [], onExploreNode, onHighlightPath }: NodeDetailProps) {
+export default function NodeDetail({ node, onClose, language, projectId, edges = [], allNodes = [], onExploreNode, onHighlightPath }: NodeDetailProps) {
   const [tab, setTab] = useState<"overview" | "code" | "connections">("overview");
+  const [aiText, setAiText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+
+  useEffect(() => {
+    if (!node) return;
+    setAiText("");
+    setAiLoading(true);
+    fetch("/api/chatbot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        msg: `Explain the file ${node.file} — what it does, its purpose, key exports or functions, and how it fits in the project.`,
+        projectId: projectId ?? "",
+        nodeMode: true,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => setAiText(typeof d?.output === "string" && d.output.trim() ? d.output : ""))
+      .catch(() => setAiText(""))
+      .finally(() => setAiLoading(false));
+  }, [node?.id, projectId]);
 
   // Compute outgoing and incoming connections for the connections tab
   const outgoing = node
@@ -169,9 +180,26 @@ export default function NodeDetail({ node, onClose, language, edges = [], allNod
                       AI Sarthi · {LANGUAGE_LABELS[language]}
                     </span>
                   </div>
-                  <p className="text-xs leading-relaxed" style={{ color: "#C0C0D0" }}>
-                    {AI_EXPLANATIONS[language](node)}
-                  </p>
+                  {aiLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        {[0, 0.15, 0.3].map((delay, i) => (
+                          <motion.div
+                            key={i}
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ background: "#6E56CF" }}
+                            animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1, 0.8] }}
+                            transition={{ duration: 1, repeat: Infinity, delay }}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[10px]" style={{ color: "#6B6B80" }}>Analyzing file...</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-relaxed" style={{ color: "#C0C0D0" }}>
+                      {aiText || "No information available for this file."}
+                    </p>
+                  )}
                 </div>
 
                 {/* Description */}
