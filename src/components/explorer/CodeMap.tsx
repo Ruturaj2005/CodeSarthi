@@ -29,8 +29,52 @@ function getNodeSize(importance: number) {
 }
 
 const LAYER_ORDER: ArchLayer[] = ["frontend", "routing", "logic", "data", "infra"];
-const LANE_HEIGHT = 200;
-const LANE_START_Y = 20;
+
+// ─── Grid Layout Constants ────────────────────────────────────────────────────
+const GL_HGAP        = 26;   // horizontal gap between nodes in a grid cell
+const GL_VGAP        = 64;   // vertical gap between node rows
+const GL_LANE_LPAD   = 152;  // left padding for the lane label column
+const GL_LANE_PAD_T  = 52;   // padding above first row of nodes in a lane
+const GL_LANE_PAD_B  = 32;   // padding below last row
+const GL_LANE_GAP    = 36;   // gap between successive swim lanes
+
+/**
+ * computeGridLayout — positions every node in a 2-D grid inside its layer lane.
+ * Column count = Math.ceil(Math.sqrt(nodesInLayer)), nodes ranked by importance.
+ * Returns a flat map of nodeId → { x, y } and the total canvas width.
+ */
+function computeGridLayout(
+  nodes: GraphNode[]
+): { positions: Record<string, { x: number; y: number }>; canvasWidth: number } {
+  const positions: Record<string, { x: number; y: number }> = {};
+  let currentLaneY = GL_LANE_GAP;
+  let maxX = 0;
+
+  for (const layer of LAYER_ORDER) {
+    const layerNodes = nodes
+      .filter((n) => n.layer === layer)
+      .sort((a, b) => b.importance - a.importance);
+
+    if (layerNodes.length === 0) continue;
+
+    const cols = Math.ceil(Math.sqrt(layerNodes.length));
+    const rows = Math.ceil(layerNodes.length / cols);
+
+    layerNodes.forEach((node, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const x = GL_LANE_LPAD + col * (NODE_SIZES.large.w + GL_HGAP);
+      const y = currentLaneY + GL_LANE_PAD_T + row * (NODE_SIZES.large.h + GL_VGAP);
+      positions[node.id] = { x, y };
+      maxX = Math.max(maxX, x + NODE_SIZES.large.w);
+    });
+
+    const laneH = GL_LANE_PAD_T + rows * (NODE_SIZES.large.h + GL_VGAP) + GL_LANE_PAD_B;
+    currentLaneY += laneH + GL_LANE_GAP;
+  }
+
+  return { positions, canvasWidth: Math.max(960, maxX + 80) };
+}
 
 export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, highlightedNodes = [], exploredNode, onNodeExplore }: CodeMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -42,9 +86,9 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
   const [activeFilter, setActiveFilter] = useState<NodeType | null>(null);
   const [focusMode, setFocusMode] = useState(false);
 
-  // Per-node positions (allows dragging)
+  // Per-node positions (allows dragging) — seeded by computeGridLayout
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>(() =>
-    Object.fromEntries(nodes.map((n) => [n.id, { x: n.x, y: n.y }]))
+    computeGridLayout(nodes).positions
   );
   const [isDraggingNode, setIsDraggingNode] = useState(false);
   const draggingRef = useRef<{
@@ -60,17 +104,25 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
   } | null>(null);
   const isDraggingFnRef = useRef(false);
 
+  // Lane (architecture layer) drag state — dragging the header moves all nodes in that layer
+  const laneDraggingRef = useRef<{
+    layer: ArchLayer;
+    startSvgX: number; startSvgY: number;
+    prevDx: number; prevDy: number;
+  } | null>(null);
+  const [hoveredLane, setHoveredLane] = useState<ArchLayer | null>(null);
+
   // Which nodes have their fn sub-nodes shown (toggled per node)
   const [expandedFnNodes, setExpandedFnNodes] = useState<Set<string>>(new Set());
 
   // Re-sync positions when a new repo is loaded
   useEffect(() => {
-    setNodePositions(Object.fromEntries(nodes.map((n) => [n.id, { x: n.x, y: n.y }])));
+    const { positions, canvasWidth: cw } = computeGridLayout(nodes);
+    setNodePositions(positions);
     setFnNodePositions({});
     setExpandedFnNodes(new Set());
 
-    // Auto-fit all nodes into view when a new repo loads
-    // Use rAF to let the SVG render and get the container size first
+    // Auto-fit: wait for SVG to be measured then compute zoom/pan
     requestAnimationFrame(() => {
       if (!svgRef.current || nodes.length === 0) return;
       const rect = svgRef.current.getBoundingClientRect();
@@ -78,15 +130,14 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
       const H = rect.height;
       if (!W || !H) return;
 
-      const positions = Object.fromEntries(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
-      const xs = nodes.map((n) => positions[n.id]?.x ?? n.x);
-      const ys = nodes.map((n) => positions[n.id]?.y ?? n.y);
+      const xs = Object.values(positions).map((p) => p.x);
+      const ys = Object.values(positions).map((p) => p.y);
       const minX = Math.min(...xs);
       const minY = Math.min(...ys);
-      const maxX = Math.max(...xs) + 160;
-      const maxY = Math.max(...ys) + 60;
+      const maxX = cw;
+      const maxY = Math.max(...ys) + NODE_SIZES.large.h + GL_LANE_GAP;
       const pad = 60;
-      const z = Math.min(1, Math.max(0.25, Math.min(
+      const z = Math.min(1, Math.max(0.2, Math.min(
         (W - pad * 2) / (maxX - minX),
         (H - pad * 2) / (maxY - minY)
       )));
@@ -188,6 +239,34 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
     return LAYER_ORDER.filter((l) => layers.has(l));
   }, [filteredNodes]);
 
+  /**
+   * visibleLaneLayout — derives each visible lane's bounding rect directly from
+   * the current nodePositions so that swim-lane bands expand / shrink as nodes
+   * are dragged.  canvasWidth tracks the rightmost node edge + padding.
+   */
+  const { visibleLaneLayout, canvasWidth } = useMemo(() => {
+    const BAND_PAD_X = 8;
+    const BAND_PAD_Y_TOP = 32;
+    const BAND_PAD_Y_BTM = 20;
+
+    let rightEdge = 960;
+    const lanes = activeLayers.map((layer) => {
+      const layerNodes = filteredNodes.filter((n) => n.layer === layer);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      layerNodes.forEach((n) => {
+        const pos = nodePositions[n.id] ?? { x: n.x, y: n.y };
+        const size = getNodeSize(n.importance);
+        minX = Math.min(minX, pos.x - BAND_PAD_X);
+        minY = Math.min(minY, pos.y - BAND_PAD_Y_TOP);
+        maxX = Math.max(maxX, pos.x + size.w + BAND_PAD_X);
+        maxY = Math.max(maxY, pos.y + size.h + BAND_PAD_Y_BTM);
+      });
+      rightEdge = Math.max(rightEdge, maxX + 80);
+      return { layer, x: 0, y: minY, width: maxX, height: maxY - minY };
+    });
+    return { visibleLaneLayout: lanes, canvasWidth: rightEdge };
+  }, [activeLayers, filteredNodes, nodePositions]);
+
   // Group nodes by layer then by group for swim-lane rendering
   const nodesByLayerGroup = useMemo(() => {
     const map = new Map<ArchLayer, Map<string, GraphNode[]>>();
@@ -222,13 +301,57 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
     setIsDraggingNode(true);
   };
 
+  const handleLaneDragStart = (e: React.MouseEvent, layer: ArchLayer) => {
+    e.stopPropagation();
+    const rect = svgRef.current!.getBoundingClientRect();
+    const svgX = (e.clientX - rect.left - pan.x) / zoom;
+    const svgY = (e.clientY - rect.top - pan.y) / zoom;
+    laneDraggingRef.current = { layer, startSvgX: svgX, startSvgY: svgY, prevDx: 0, prevDy: 0 };
+    setIsDraggingNode(true);
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
     const t = e.target as SVGElement;
-    if (t.closest(".node-group") || t.closest(".fn-node-group")) return;
+    if (t.closest(".node-group") || t.closest(".fn-node-group") || t.closest(".lane-header-group")) return;
     setIsPanning(true);
     setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
   const handleMouseMove = (e: React.MouseEvent) => {
+    // lane drag — shift every node in that layer
+    if (laneDraggingRef.current) {
+      const drag = laneDraggingRef.current;
+      const rect = svgRef.current!.getBoundingClientRect();
+      const svgX = (e.clientX - rect.left - pan.x) / zoom;
+      const svgY = (e.clientY - rect.top - pan.y) / zoom;
+      const dx = svgX - drag.startSvgX;
+      const dy = svgY - drag.startSvgY;
+      const deltaDx = dx - drag.prevDx;
+      const deltaDy = dy - drag.prevDy;
+      drag.prevDx = dx;
+      drag.prevDy = dy;
+      if (deltaDx === 0 && deltaDy === 0) return;
+      setNodePositions((prev) => {
+        const next = { ...prev };
+        nodes.filter((n) => n.layer === drag.layer).forEach((n) => {
+          const p = prev[n.id];
+          if (p) next[n.id] = { x: p.x + deltaDx, y: p.y + deltaDy };
+        });
+        return next;
+      });
+      setFnNodePositions((prev) => {
+        const layerNodeIds = new Set(nodes.filter((n) => n.layer === drag.layer).map((n) => n.id));
+        const relevant = Object.keys(prev).filter((k) => {
+          const parts = k.split("-"); // fn-<nodeId>-<idx>
+          return layerNodeIds.has(parts.slice(1, -1).join("-"));
+        });
+        if (relevant.length === 0) return prev;
+        const updates = Object.fromEntries(
+          relevant.map((fnId) => [fnId, { x: prev[fnId].x + deltaDx, y: prev[fnId].y + deltaDy }])
+        );
+        return { ...prev, ...updates };
+      });
+      return;
+    }
     // fn sub-node drag
     if (fnDraggingRef.current) {
       const drag = fnDraggingRef.current;
@@ -279,6 +402,7 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
   const handleMouseUp = () => {
     fnDraggingRef.current = null;
     draggingRef.current = null;
+    laneDraggingRef.current = null;
     setIsDraggingNode(false);
     setIsPanning(false);
   };
@@ -428,70 +552,121 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
 
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
 
-          {/* ═══ SWIM-LANE BACKGROUNDS ═══ */}
-          {activeLayers.map((layer, idx) => {
+          {/* ═══ SWIM-LANE BACKGROUNDS — bounds derived live from nodePositions ═══ */}
+          {visibleLaneLayout.map(({ layer, y, height }, idx) => {
             const meta = LAYER_META[layer];
-            const laneY = LANE_START_Y + idx * LANE_HEIGHT;
+            const nextLane = visibleLaneLayout[idx + 1];
+            const isLaneHovered = hoveredLane === layer;
+            const isDraggingThisLane = laneDraggingRef.current?.layer === layer;
             return (
               <g key={`lane-${layer}`}>
-                {/* Lane background band */}
+                {/* Dynamic lane background band */}
                 <rect
                   x={0}
-                  y={laneY}
-                  width={2000}
-                  height={LANE_HEIGHT - 10}
-                  rx={12}
-                  fill={`${meta.color}06`}
-                  stroke={`${meta.color}15`}
-                  strokeWidth={1}
+                  y={y}
+                  width={canvasWidth}
+                  height={height}
+                  rx={14}
+                  fill={`${meta.color}07`}
+                  stroke={isDraggingThisLane ? `${meta.color}50` : isLaneHovered ? `${meta.color}30` : `${meta.color}18`}
+                  strokeWidth={isDraggingThisLane ? 1.5 : 1}
                   strokeDasharray="6 4"
+                  style={{ transition: "stroke 0.15s" }}
                 />
-                {/* Lane label on the left */}
-                <g transform={`translate(12, ${laneY + 14})`}>
-                  <rect
-                    width={110}
-                    height={20}
-                    rx={6}
-                    fill={`${meta.color}18`}
-                    stroke={`${meta.color}35`}
-                    strokeWidth={0.5}
-                  />
-                  <text
-                    x={8}
-                    y={14}
-                    fontSize={9}
-                    fontFamily="JetBrains Mono, monospace"
-                    fontWeight={600}
-                    fill={meta.color}
-                  >
-                    {meta.icon} {meta.label}
-                  </text>
-                </g>
-                {/* Lane description */}
-                <text
-                  x={130}
-                  y={laneY + 26}
-                  fontSize={7.5}
-                  fontFamily="JetBrains Mono, monospace"
-                  fill={`${meta.color}60`}
+                {/* Left accent bar */}
+                <rect
+                  x={0}
+                  y={y}
+                  width={4}
+                  height={height}
+                  rx={2}
+                  fill={`${meta.color}${isLaneHovered || isDraggingThisLane ? "90" : "60"}`}
+                  style={{ transition: "fill 0.15s" }}
+                />
+
+                {/* ── Draggable lane header area ── */}
+                <g
+                  className="lane-header-group"
+                  style={{ cursor: isDraggingThisLane ? "grabbing" : "grab" }}
+                  onMouseDown={(e) => handleLaneDragStart(e, layer)}
+                  onMouseEnter={() => setHoveredLane(layer)}
+                  onMouseLeave={() => setHoveredLane(null)}
                 >
-                  {meta.description}
-                </text>
-                {/* Directional flow arrow between lanes */}
-                {idx < activeLayers.length - 1 && (
+                  {/* Wide invisible drag hit-area */}
+                  <rect
+                    x={0}
+                    y={y}
+                    width={canvasWidth}
+                    height={36}
+                    fill="transparent"
+                  />
+                  {/* Lane header pill */}
+                  <g transform={`translate(10, ${y + 7})`}>
+                    <rect
+                      width={136}
+                      height={22}
+                      rx={8}
+                      fill={isLaneHovered || isDraggingThisLane ? `${meta.color}28` : `${meta.color}20`}
+                      stroke={isLaneHovered || isDraggingThisLane ? `${meta.color}60` : `${meta.color}40`}
+                      strokeWidth={0.75}
+                      style={{ transition: "fill 0.15s, stroke 0.15s" }}
+                    />
+                    {/* Drag handle dots */}
+                    <g opacity={isLaneHovered || isDraggingThisLane ? 0.7 : 0.3}
+                      style={{ transition: "opacity 0.15s" }}>
+                      {[0,4,8].map((dy) => [0,4].map((dx) => (
+                        <circle key={`d-${dx}-${dy}`} cx={8 + dx} cy={8 + dy} r={0.9} fill={meta.color} />
+                      )))}
+                    </g>
+                    <text
+                      x={20}
+                      y={15}
+                      fontSize={10}
+                      fontFamily="JetBrains Mono, monospace"
+                      fontWeight={700}
+                      fill={meta.color}
+                      style={{ pointerEvents: "none", userSelect: "none" }}
+                    >
+                      {meta.icon} {meta.label}
+                    </text>
+                  </g>
+                  {/* Subtitle */}
+                  <text
+                    x={153}
+                    y={y + 20}
+                    fontSize={8}
+                    fontFamily="JetBrains Mono, monospace"
+                    fill={`${meta.color}55`}
+                    style={{ pointerEvents: "none", userSelect: "none" }}
+                  >
+                    {meta.description}
+                  </text>
+                  {/* Node count badge */}
+                  <g transform={`translate(${canvasWidth - 82}, ${y + 7})`}>
+                    <rect width={72} height={22} rx={8}
+                      fill={`${meta.color}12`} stroke={`${meta.color}30`} strokeWidth={0.5}
+                    />
+                    <text x={36} y={15} fontSize={8.5} fontFamily="JetBrains Mono, monospace"
+                      fill={`${meta.color}90`} textAnchor="middle"
+                      style={{ pointerEvents: "none", userSelect: "none" }}>
+                      {filteredNodes.filter((n) => n.layer === layer).length} nodes
+                    </text>
+                  </g>
+                </g>
+
+                {/* Downward flow connector to next lane */}
+                {nextLane && (
                   <g>
                     <line
-                      x1={60}
-                      y1={laneY + LANE_HEIGHT - 14}
-                      x2={60}
-                      y2={laneY + LANE_HEIGHT + 4}
-                      stroke="rgba(110,86,207,0.2)"
+                      x1={62} y1={y + height + 4}
+                      x2={62} y2={nextLane.y - 6}
+                      stroke="rgba(110,86,207,0.25)"
                       strokeWidth={1.5}
-                      strokeDasharray="3 2"
+                      strokeDasharray="3 3"
                     />
                     <polygon
-                      points={`55,${laneY + LANE_HEIGHT + 2} 65,${laneY + LANE_HEIGHT + 2} 60,${laneY + LANE_HEIGHT + 9}`}
-                      fill="rgba(110,86,207,0.3)"
+                      points={`57,${nextLane.y - 6} 67,${nextLane.y - 6} 62,${nextLane.y}`}
+                      fill="rgba(110,86,207,0.35)"
                     />
                   </g>
                 )}
@@ -499,13 +674,13 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
             );
           })}
 
-          {/* ═══ DOMAIN GROUP CONTAINERS ═══ */}
-          {activeLayers.map((layer, laneIdx) => {
+          {/* ═══ DOMAIN GROUP CONTAINERS — bounding box recomputed from live nodePositions ═══ */}
+          {activeLayers.map((layer) => {
             const groups = nodesByLayerGroup.get(layer);
             if (!groups) return null;
             return Array.from(groups.entries()).map(([groupName, groupNodes]) => {
-              if (groupNodes.length === 0) return null;
-              // Calculate bounding box of group nodes
+              if (groupNodes.length < 2) return null;
+              // Recompute bounding box from current (draggable) positions every render
               let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
               groupNodes.forEach((n) => {
                 const pos = nodePositions[n.id] ?? { x: n.x, y: n.y };
@@ -515,28 +690,39 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
                 maxX = Math.max(maxX, pos.x + size.w);
                 maxY = Math.max(maxY, pos.y + size.h);
               });
-              const pad = 16;
-              if (groupNodes.length < 2) return null; // Don't draw container for single node
+              const meta = LAYER_META[layer];
+              const pad = 18;
               return (
                 <g key={`group-${layer}-${groupName}`}>
                   <rect
                     x={minX - pad}
-                    y={minY - pad - 14}
+                    y={minY - pad - 16}
                     width={maxX - minX + pad * 2}
-                    height={maxY - minY + pad * 2 + 14}
-                    rx={10}
-                    fill="rgba(255,255,255,0.015)"
-                    stroke="rgba(255,255,255,0.06)"
+                    height={maxY - minY + pad * 2 + 16}
+                    rx={11}
+                    fill="rgba(255,255,255,0.012)"
+                    stroke={`${meta.color}22`}
                     strokeWidth={1}
-                    strokeDasharray="4 3"
+                    strokeDasharray="5 3"
+                  />
+                  {/* Group label tab */}
+                  <rect
+                    x={minX - pad}
+                    y={minY - pad - 16}
+                    width={Math.min(groupName.length * 7 + 20, 160)}
+                    height={14}
+                    rx={4}
+                    fill={`${meta.color}18`}
+                    stroke={`${meta.color}30`}
+                    strokeWidth={0.5}
                   />
                   <text
-                    x={minX - pad + 8}
-                    y={minY - pad - 2}
-                    fontSize={8}
+                    x={minX - pad + 7}
+                    y={minY - pad - 4}
+                    fontSize={8.5}
                     fontFamily="JetBrains Mono, monospace"
-                    fontWeight={600}
-                    fill="rgba(255,255,255,0.25)"
+                    fontWeight={700}
+                    fill={`${meta.color}BB`}
                   >
                     {groupName.toUpperCase()}
                   </text>
@@ -651,26 +837,48 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
                   />
                 )}
 
-                {/* Explore + fn buttons — appear on hover below the node */}
-                {isHovered && onNodeExplore && (
-                  <g transform={`translate(0, ${size.h + 4})`}>
-                    {/* Explore button */}
+                {/* Explore + fn buttons — persistent when selected/explored, appear on hover otherwise */}
+                {(isHovered || isSelected || isExploredNode) && onNodeExplore && (
+                  <g transform={`translate(0, ${size.h + 6})`}>
+                    {/* Invisible enlarged hit-area backdrop */}
+                    <rect
+                      x={size.w / 2 - 80}
+                      y={-4}
+                      width={node.functions.length > 0 ? 162 : 116}
+                      height={26}
+                      rx={10}
+                      fill="transparent"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+
+                    {/* ── Explore button ── */}
                     <g
-                      transform={`translate(${size.w / 2 - 68}, 0)`}
+                      transform={`translate(${size.w / 2 - 78}, 0)`}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => { e.stopPropagation(); onNodeExplore(node); }}
                       style={{ cursor: "pointer" }}
                     >
+                      {/* Outer glow when active */}
+                      {isExploredNode && (
+                        <rect
+                          x={-2} y={-2} width={80} height={22} rx={10}
+                          fill="none"
+                          stroke="#00D2A040"
+                          strokeWidth={4}
+                          style={{ filter: "blur(2px)" }}
+                        />
+                      )}
                       <rect
-                        width={64} height={15} rx={7}
-                        fill={isExploredNode ? "rgba(0,210,160,0.2)" : "rgba(110,86,207,0.25)"}
+                        width={76} height={19} rx={9}
+                        fill={isExploredNode ? "rgba(0,210,160,0.22)" : isHovered ? "rgba(110,86,207,0.3)" : "rgba(110,86,207,0.18)"}
                         stroke={isExploredNode ? "#00D2A0" : "#6E56CF"}
-                        strokeWidth={0.75}
+                        strokeWidth={isExploredNode ? 1 : 0.75}
                       />
                       <text
-                        x={32} y={10.5}
-                        fontSize={7.5}
+                        x={38} y={13}
+                        fontSize={9}
                         fontFamily="JetBrains Mono, monospace"
+                        fontWeight={600}
                         fill={isExploredNode ? "#00D2A0" : "#A78BFA"}
                         textAnchor="middle"
                       >
@@ -678,10 +886,10 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
                       </text>
                     </g>
 
-                    {/* fn toggle — right beside Explore */}
+                    {/* ── ƒ (Functions) toggle button ── */}
                     {node.functions.length > 0 && (
                       <g
-                        transform={`translate(${size.w / 2 + 2}, 0)`}
+                        transform={`translate(${size.w / 2 + 4}, 0)`}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -694,16 +902,26 @@ export default function CodeMap({ nodes, edges, selectedNode, onNodeSelect, high
                         }}
                         style={{ cursor: "pointer" }}
                       >
+                        {expandedFnNodes.has(node.id) && (
+                          <rect
+                            x={-2} y={-2} width={78} height={22} rx={10}
+                            fill="none"
+                            stroke="#00D2A030"
+                            strokeWidth={4}
+                            style={{ filter: "blur(2px)" }}
+                          />
+                        )}
                         <rect
-                          width={34} height={15} rx={7}
-                          fill={expandedFnNodes.has(node.id) ? "rgba(0,210,160,0.22)" : "rgba(107,107,128,0.12)"}
-                          stroke={expandedFnNodes.has(node.id) ? "rgba(0,210,160,0.6)" : "rgba(107,107,128,0.35)"}
-                          strokeWidth={0.75}
+                          width={74} height={19} rx={9}
+                          fill={expandedFnNodes.has(node.id) ? "rgba(0,210,160,0.22)" : "rgba(107,107,128,0.14)"}
+                          stroke={expandedFnNodes.has(node.id) ? "rgba(0,210,160,0.75)" : "rgba(107,107,128,0.4)"}
+                          strokeWidth={expandedFnNodes.has(node.id) ? 1 : 0.75}
                         />
-                        <text x={17} y={10.5} fontSize={7.5} fontFamily="JetBrains Mono, monospace"
+                        <text x={37} y={13} fontSize={9} fontFamily="JetBrains Mono, monospace"
+                          fontWeight={600}
                           fill={expandedFnNodes.has(node.id) ? "#00D2A0" : "#6B6B80"}
                           textAnchor="middle">
-                          ƒ{node.functions.length}
+                          ƒ ({node.functions.length})
                         </text>
                       </g>
                     )}
