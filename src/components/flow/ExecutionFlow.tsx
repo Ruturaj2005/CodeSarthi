@@ -111,6 +111,164 @@ const EDGE_CHIP: Record<string, { bg: string; color: string; label: string }> = 
   EVENT_EMIT:    { bg: "rgba(245,166,35,0.18)",  color: "#F5A623", label: "event" },
 };
 
+// Calculate node position for map layout
+function calculateNodePosition(index: number, total: number): { x: number; y: number } {
+  const row = Math.floor(index / 3);
+  const col = index % 3;
+  const isOffset = row % 2 === 1;
+  
+  // Create a winding path effect
+  const baseX = 200 + (col * 400) + (isOffset ? 200 : 0);
+  const baseY = 150 + (row * 250);
+  
+  // Add variation to make it more organic
+  const variation = Math.sin(index * 0.7) * 80;
+  
+  return {
+    x: baseX + variation,
+    y: baseY + (Math.cos(index * 0.5) * 40),
+  };
+}
+
+// Map node component for exploration map
+function MapNode({ step, position, isActive, isDone, isLocked, isSarthi, index, total, onClick }: {
+  step: FlowStep;
+  position: { x: number; y: number };
+  isActive: boolean;
+  isDone: boolean;
+  isLocked: boolean;
+  isSarthi: boolean;
+  index: number;
+  total: number;
+  onClick: () => void;
+}) {
+  const nodeTypeMap: Record<number, keyof typeof NODE_COLORS> = { 1: "entry" };
+  const nodeType = nodeTypeMap[step.step] ?? (step.edgeType === "DB_QUERY" ? "model" : step.step === total ? "model" : "controller");
+  const colors = NODE_COLORS[nodeType];
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <motion.div
+      className="absolute cursor-pointer group"
+      style={{
+        left: position.x - 60,
+        top: position.y - 60,
+        zIndex: isActive ? 15 : isDone ? 10 : 5,
+      }}
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{
+        scale: isActive ? 1.15 : isHovered ? 1.08 : 1,
+        opacity: isLocked ? 0.3 : 1,
+      }}
+      transition={{ duration: 0.4, delay: index * 0.05 }}
+      onHoverStart={() => !isLocked && setIsHovered(true)}
+      onHoverEnd={() => setIsHovered(false)}
+      onClick={onClick}
+    >
+      {/* Fog of war for locked nodes */}
+      {isLocked && (
+        <div className="absolute inset-0 rounded-2xl backdrop-blur-sm flex items-center justify-center" style={{ background: "rgba(10,10,15,0.85)", zIndex: 20 }}>
+          <div className="text-2xl">🔒</div>
+        </div>
+      )}
+
+      {/* Glow effect */}
+      {(isActive || isDone) && (
+        <motion.div
+          className="absolute inset-0 rounded-2xl"
+          animate={{ opacity: [0.3, 0.6, 0.3], scale: [1, 1.15, 1] }}
+          transition={{ duration: 2, repeat: Infinity }}
+          style={{
+            background: isActive ? (isSarthi ? "radial-gradient(circle, rgba(245,166,35,0.4), transparent)" : "radial-gradient(circle, rgba(110,86,207,0.4), transparent)") : "radial-gradient(circle, rgba(110,86,207,0.25), transparent)",
+            filter: "blur(20px)",
+          }}
+        />
+      )}
+
+      {/* Main node card */}
+      <div
+        className="relative w-28 h-28 rounded-2xl flex flex-col items-center justify-center text-center p-3 transition-all"
+        style={{
+          background: isActive ? colors.bg : isDone ? "rgba(110,86,207,0.15)" : "rgba(17,17,24,0.8)",
+          border: `2px solid ${isActive ? (isSarthi ? "#F5A623" : colors.border) : isDone ? "#6E56CF" : "rgba(255,255,255,0.1)"}`,
+          boxShadow: isActive ? `0 0 40px ${isSarthi ? "rgba(245,166,35,0.5)" : "rgba(110,86,207,0.5)"}` : isDone ? "0 0 20px rgba(110,86,207,0.3)" : "none",
+        }}
+      >
+        {/* Step number badge */}
+        <div
+          className="absolute -top-3 -left-3 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+          style={{
+            background: isDone ? "#6E56CF" : isActive ? (isSarthi ? "#F5A623" : "#FFD700") : "rgba(255,255,255,0.1)",
+            color: isDone || isActive ? "#fff" : "#6B6B80",
+            boxShadow: isActive ? "0 0 15px rgba(255,215,0,0.6)" : "none",
+          }}
+        >
+          {step.step}
+        </div>
+
+        {/* Completion/alert badges */}
+        {isDone && (
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            className="absolute -top-3 -right-3 w-7 h-7 rounded-full bg-[#00D2A0] flex items-center justify-center text-sm"
+          >
+            ✓
+          </motion.div>
+        )}
+        {isSarthi && isActive && (
+          <motion.div
+            animate={{ scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] }}
+            transition={{ repeat: Infinity, duration: 1.5 }}
+            className="absolute -top-3 -right-3 w-7 h-7 rounded-full bg-[#F5A623] flex items-center justify-center text-sm"
+          >
+            🎯
+          </motion.div>
+        )}
+
+        {/* Node icon */}
+        <div className="text-2xl mb-1" style={{ opacity: isLocked ? 0.3 : 1 }}>
+          {step.step === 1 ? "🏁" : step.edgeType === "DB_QUERY" ? "💾" : step.step === total ? "🏆" : isDone ? "⭐" : "📦"}
+        </div>
+
+        {/* Node title */}
+        <div className="text-[10px] font-bold leading-tight line-clamp-2" style={{ color: isActive ? colors.text : isDone ? "#A78BFA" : "#9090A0" }}>
+          {step.title}
+        </div>
+
+        {/* Function name */}
+        <div className="text-[8px] font-mono mt-1 truncate w-full" style={{ color: "#6B6B80" }}>
+          {step.functionName.slice(0, 12)}
+        </div>
+      </div>
+
+      {/* Hover tooltip */}
+      <AnimatePresence>
+        {isHovered && !isLocked && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-[10px] whitespace-nowrap pointer-events-none"
+            style={{
+              background: "rgba(17,17,24,0.95)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              color: "#E8E8F0",
+              zIndex: 30,
+            }}
+          >
+            <div className="font-bold mb-0.5">{step.title}</div>
+            <div style={{ color: "#9090A0" }}>{step.description.slice(0, 50)}...</div>
+            <div className="mt-1 text-[9px]" style={{ color: "#6B6B80" }}>
+              {isDone ? "✓ Completed" : isActive ? "🎯 Current" : "Click to explore"}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
 function StepDots({ steps, current, onGoto }: { steps: FlowStep[]; current: number; onGoto: (i: number) => void }) {
   return (
     <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -124,7 +282,7 @@ function StepDots({ steps, current, onGoto }: { steps: FlowStep[]; current: numb
           />
           {i === current && (
             <motion.div layoutId="stepCursor" className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[7px] font-bold" style={{ color: "#A78BFA" }}>
-              ?
+              ↑
             </motion.div>
           )}
         </button>
@@ -791,25 +949,158 @@ export default function ExecutionFlowViewer() {
 
       {/* Main split */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Flow graph canvas */}
-        <div className="flex-1 border-r overflow-y-auto overflow-x-hidden relative" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(10,10,15,0.8)" }}>
+        {/* Flow graph canvas - EXPLORATION MAP */}
+        <div className="flex-1 border-r overflow-hidden relative" style={{ borderColor: "rgba(255,255,255,0.06)", background: "radial-gradient(ellipse at 50% 50%, rgba(30,27,75,0.4), rgba(10,10,15,0.95))" }}>
           <AnimatePresence>
             {step?.sarthiAlert && (
-              <motion.div key="alert-banner" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="sticky top-0 z-20 mx-3 mt-3 px-4 py-2.5 rounded-xl flex items-center gap-2" style={{ background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.3)", backdropFilter: "blur(8px)" }}>
+              <motion.div key="alert-banner" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute top-3 left-1/2 -translate-x-1/2 z-30 px-4 py-2.5 rounded-xl flex items-center gap-2 max-w-md" style={{ background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.3)", backdropFilter: "blur(8px)" }}>
                 <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#F5A623" }} />
-                <span className="text-[11px]" style={{ color: "#F5A623" }}>?? Sarthi Alert âEUR" Students often find this part tricky. Take your time.</span>
+                <span className="text-[11px]" style={{ color: "#F5A623" }}>🎯 Sarthi Alert — Students often find this part tricky. Take your time.</span>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <div className="flex flex-col items-center gap-9 py-8 px-4">
-            {flow?.steps.map((s, i) => (
-              <FlowNodeCard key={s.id} step={s} isActive={i === stepIdx} isDone={i < stepIdx} isUpcoming={i === stepIdx + 1} isSarthi={!!s.sarthiAlert} index={i} total={flow.steps.length} />
-            ))}
+          {/* Map Legend */}
+          <div className="absolute top-3 left-3 z-20 px-3 py-2 rounded-lg text-[10px] space-y-1" style={{ background: "rgba(17,17,24,0.85)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}>
+            <div className="font-bold mb-1.5" style={{ color: "#E8E8F0" }}>🗺️ Map Legend</div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#F5A623" }} /><span style={{ color: "#9090A0" }}>Entry Island</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#3B82F6" }} /><span style={{ color: "#9090A0" }}>UI Archipelago</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#A855F7" }} /><span style={{ color: "#9090A0" }}>Logic Peaks</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#22C55E" }} /><span style={{ color: "#9090A0" }}>Data Valley</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#6B7280" }} /><span style={{ color: "#9090A0" }}>Utility Bay</span></div>
+          </div>
+
+          {/* Minimap */}
+          <div className="absolute bottom-3 left-3 z-20" style={{ width: 120, height: 80, background: "rgba(17,17,24,0.9)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, backdropFilter: "blur(8px)" }}>
+            <div className="text-[8px] font-bold px-2 py-1 border-b" style={{ color: "#6B6B80", borderColor: "rgba(255,255,255,0.06)" }}>MINIMAP</div>
+            <div className="relative h-full p-1">
+              {flow?.steps.map((s, i) => {
+                const pos = calculateNodePosition(i, flow.steps.length);
+                return (
+                  <div key={s.id} className="absolute rounded-full" style={{ left: `${pos.x / 10}%`, top: `${pos.y / 8}%`, width: 4, height: 4, background: i === stepIdx ? "#FFD700" : i < stepIdx ? "#6E56CF" : "rgba(255,255,255,0.2)" }} />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Scrollable map container */}
+          <div className="w-full h-full overflow-auto">
+            <div className="relative" style={{ width: 1400, height: 1000, minHeight: "100%" }}>
+              {/* Terrain zones background */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.15 }}>
+                <defs>
+                  <radialGradient id="entryGlow" cx="50%" cy="50%">
+                    <stop offset="0%" stopColor="#F5A623" stopOpacity="0.4" />
+                    <stop offset="100%" stopColor="#F5A623" stopOpacity="0" />
+                  </radialGradient>
+                  <radialGradient id="uiGlow" cx="50%" cy="50%">
+                    <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
+                  </radialGradient>
+                  <radialGradient id="logicGlow" cx="50%" cy="50%">
+                    <stop offset="0%" stopColor="#A855F7" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="#A855F7" stopOpacity="0" />
+                  </radialGradient>
+                  <radialGradient id="dataGlow" cx="50%" cy="50%">
+                    <stop offset="0%" stopColor="#22C55E" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="#22C55E" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <circle cx="200" cy="150" r="180" fill="url(#entryGlow)" />
+                <ellipse cx="700" cy="250" rx="350" ry="200" fill="url(#uiGlow)" />
+                <ellipse cx="900" cy="550" rx="280" ry="250" fill="url(#logicGlow)" />
+                <circle cx="600" cy="800" r="200" fill="url(#dataGlow)" />
+              </svg>
+
+              {/* Paths between nodes */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+                {flow?.steps.map((s, i) => {
+                  if (i === flow.steps.length - 1) return null;
+                  const from = calculateNodePosition(i, flow.steps.length);
+                  const to = calculateNodePosition(i + 1, flow.steps.length);
+                  const isDone = i < stepIdx;
+                  const isActive = i === stepIdx;
+                  const midX = (from.x + to.x) / 2;
+                  const midY = (from.y + to.y) / 2 - 80; // Curve upward
+                  const pathD = `M ${from.x} ${from.y} Q ${midX} ${midY} ${to.x} ${to.y}`;
+                  
+                  return (
+                    <g key={s.id}>
+                      {/* Path line */}
+                      <motion.path
+                        d={pathD}
+                        fill="none"
+                        stroke={isDone ? "#6E56CF" : "rgba(255,255,255,0.1)"}
+                        strokeWidth={isDone ? 3 : 2}
+                        strokeDasharray={isDone ? "0" : "8 4"}
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: isDone ? 1 : 0.3 }}
+                        transition={{ duration: 0.8, delay: i * 0.1 }}
+                      />
+                      
+                      {/* Animated particle on active path */}
+                      {isActive && (
+                        <motion.circle
+                          r={5}
+                          fill="#FFD700"
+                          filter="url(#glow)"
+                          animate={{
+                            offsetDistance: ["0%", "100%"],
+                          }}
+                          transition={{
+                            duration: 2,
+                            repeat: Infinity,
+                            ease: "linear",
+                          }}
+                          style={{
+                            offsetPath: `path('${pathD}')`,
+                          }}
+                        >
+                          <animateMotion dur="2s" repeatCount="indefinite" path={pathD} />
+                        </motion.circle>
+                      )}
+                    </g>
+                  );
+                })}
+                <defs>
+                  <filter id="glow">
+                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                </defs>
+              </svg>
+
+              {/* Node positions */}
+              {flow?.steps.map((s, i) => {
+                const pos = calculateNodePosition(i, flow.steps.length);
+                return (
+                  <MapNode
+                    key={s.id}
+                    step={s}
+                    position={pos}
+                    isActive={i === stepIdx}
+                    isDone={i < stepIdx}
+                    isLocked={i > stepIdx + 1}
+                    isSarthi={!!s.sarthiAlert}
+                    index={i}
+                    total={flow.steps.length}
+                    onClick={() => {
+                      if (i <= stepIdx + 1) {
+                        goto(i);
+                        setPlaying(false);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </div>
           </div>
 
           {step && (
-            <div className="absolute top-3 right-3 pointer-events-none">
+            <div className="absolute top-3 right-3 z-20 pointer-events-none">
               <AnimatePresence mode="wait">
                 <motion.div key={step.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px]" style={{ background: step.sarthiAlert ? "rgba(245,166,35,0.15)" : "rgba(110,86,207,0.15)", border: `1px solid ${step.sarthiAlert ? "rgba(245,166,35,0.3)" : "rgba(110,86,207,0.3)"}`, backdropFilter: "blur(8px)" }}>
                   <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: step.sarthiAlert ? "#F5A623" : "#6E56CF" }} />
